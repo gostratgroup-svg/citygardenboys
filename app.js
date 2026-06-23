@@ -8,6 +8,21 @@ const services = [
   "Not Sure",
 ];
 
+const southAfricanAreas = {
+  "Cape Town": ["Atlantic Seaboard", "Bellville", "Bishopscourt", "Blouberg", "Brackenfell", "Camps Bay", "Century City", "Claremont", "Constantia", "Durbanville", "Fish Hoek", "Gardens", "Goodwood", "Green Point", "Kenilworth", "Khayelitsha", "Kraaifontein", "Milnerton", "Mitchells Plain", "Newlands", "Observatory", "Parow", "Pinelands", "Rondebosch", "Sea Point", "Somerset West", "Stellenbosch", "Table View", "Tokai", "Woodstock"],
+  Johannesburg: ["Alexandra", "Bedfordview", "Benoni", "Bryanston", "Edenvale", "Fourways", "Germiston", "Greenside", "Houghton", "Kempton Park", "Midrand", "Melville", "Northcliff", "Randburg", "Roodepoort", "Rosebank", "Sandton", "Soweto", "Sunninghill", "Wynberg"],
+  Pretoria: ["Arcadia", "Brooklyn", "Centurion", "Faerie Glen", "Garsfontein", "Hatfield", "Irene", "Lynnwood", "Menlyn", "Montana", "Moreleta Park", "Muckleneuk", "Pretoria East", "Pretoria North", "Rietondale", "Silver Lakes", "Sunnyside", "Waterkloof", "Wonderboom"],
+  Durban: ["Amanzimtoti", "Ballito", "Berea", "Bluff", "Durban North", "Glenwood", "Hillcrest", "Kloof", "La Lucia", "Morningside", "Musgrave", "Pinetown", "Queensburgh", "Umhlanga", "Westville"],
+  "Gqeberha": ["Bluewater Bay", "Central", "Humewood", "Lorraine", "Mill Park", "Newton Park", "Rowallan Park", "Summerstrand", "Walmer"],
+  Bloemfontein: ["Bainsvlei", "Bayswater", "Brandwag", "Dan Pienaar", "Fichardt Park", "Langenhoven Park", "Universitas", "Westdene"],
+  "East London": ["Beacon Bay", "Berea", "Gonubie", "Nahoon", "Quigney", "Vincent"],
+  Kimberley: ["Beaconsfield", "Belgravia", "Cassandra", "Hadison Park", "Hillcrest", "New Park"],
+  Polokwane: ["Bendor", "Flora Park", "Ivy Park", "Ladanna", "Moregloed", "Ster Park"],
+  Mbombela: ["Barberton", "Nelspruit Central", "Sonheuwel", "Steiltes", "Stonehenge", "West Acres"],
+  Rustenburg: ["Cashan", "Geelhoutpark", "Protea Park", "Safari Gardens", "Waterkloof"],
+  "George": ["Blanco", "Camphers Drift", "Denneoord", "Heather Park", "Loerie Park", "Wilderness"],
+};
+
 const statuses = [
   "Request Submitted",
   "Estimate Generated",
@@ -64,6 +79,7 @@ const defaultSettings = {
   pricing: {
     time: { T1: 450, T2: 650, T3: 1150, T4: 2200 },
     load: { L1: 0, L2: 150, L3: 450, L4: 850 },
+    waste: { W1: 120, W2: 280, W3: 520, W4: 900 },
     complexity: { A: 0, B: 150, C: 350, D: 650 },
     urgentAsap: 250,
     extraArea: 180,
@@ -96,10 +112,18 @@ const state = {
   editingSettings: null,
   selectedTeamIndex: null,
   editingTeamIndex: null,
+  mobileMenuOpen: false,
   form: blankForm(),
 };
 
 function render() {
+  const pathTeam = getTeamFromPath();
+  if (pathTeam) {
+    app().innerHTML = renderTeamPortal(pathTeam.team, pathTeam.index);
+    bindCopyActions();
+    return;
+  }
+
   const pathProject = getProjectFromPath();
   if (pathProject) {
     app().innerHTML = renderPublicProject(pathProject);
@@ -126,7 +150,11 @@ function renderBackOffice() {
   const settingsOnly = state.officeTab === "settings";
   const teamsOnly = state.officeTab === "teams";
   return `
-    <main class="ops-shell">
+    <main class="ops-shell ${state.mobileMenuOpen ? "menu-open" : ""}">
+      <button type="button" class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open management menu" aria-expanded="${state.mobileMenuOpen ? "true" : "false"}">
+        <span></span><span></span><span></span>
+      </button>
+      <button type="button" class="mobile-menu-scrim" id="mobileMenuScrim" aria-label="Close management menu"></button>
       <aside class="ops-sidebar">
         <div class="ops-brand">
           <img class="ops-logo real-logo" src="assets/CGG_BO_Logo.png" alt="City Garden Guys" />
@@ -161,6 +189,7 @@ function renderBackOffice() {
             <p>Manage team ownership, service ability, areas, current work, planned work and past projects.</p>
           </div>
           <div class="ops-actions">
+            ${state.selectedTeamIndex !== null ? `<button class="ops-btn light" data-back-teams>Back</button>` : ""}
             <button class="ops-btn orange" id="addTeam">Add Team</button>
           </div>
         </header>
@@ -357,11 +386,11 @@ function renderSettingsControl() {
         ["Account No.", settings.banking.accountNumber],
         ["Branch Code", settings.banking.branchCode],
         ["Payment Note", settings.banking.paymentNote],
-      ], "finance")}
+      ], "finance", true)}
       ${settingsSummaryCard("Pricing Add-Ons", "Applied on top of T / L / X job pricing", [
         ["ASAP Urgency", money(settings.pricing.urgentAsap)],
         ["Extra Area", money(settings.pricing.extraArea)],
-        ["Formula", "Time + Load + Complexity + Urgency + Extra Areas"],
+        ["Formula", "Time + Load + Waste + Complexity + Urgency + Extra Areas"],
       ], "addons")}
     </section>
     ${pricingSummaryCard(settings)}
@@ -369,15 +398,15 @@ function renderSettingsControl() {
   `;
 }
 
-function settingsSummaryCard(title, subtitle, rows, editKey) {
+function settingsSummaryCard(title, subtitle, rows, editKey, dense = false) {
   return `
     <section class="ops-panel settings-card">
       <div class="panel-head">
         <div><h2>${title}</h2><span>${subtitle}</span></div>
         <button class="ops-btn light" data-edit-settings="${editKey}">Edit</button>
       </div>
-      <div class="data-grid settings-readonly">
-        ${rows.map(([label, value]) => dataItem(label, value)).join("")}
+      <div class="${dense ? "settings-lines" : "data-grid settings-readonly"}">
+        ${rows.map(([label, value]) => dense ? settingLine(label, value) : dataItem(label, value)).join("")}
       </div>
     </section>
   `;
@@ -387,12 +416,13 @@ function pricingSummaryCard(settings) {
   return `
     <section class="ops-panel settings-card">
       <div class="panel-head">
-        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, L1-L4 and X/A-D values used in instant quotes</span></div>
+        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, L1-L4, W1-W4 and X/A-D values used in instant quotes</span></div>
         <button class="ops-btn light" data-edit-settings="pricing">Edit</button>
       </div>
       <div class="settings-matrix readonly">
         ${pricingReadOnlyGroup("Time Rating", settings.pricing.time)}
         ${pricingReadOnlyGroup("Load Rating", settings.pricing.load)}
+        ${pricingReadOnlyGroup("Waste Removal", settings.pricing.waste)}
         ${pricingReadOnlyGroup("X Rating", settings.pricing.complexity)}
       </div>
     </section>
@@ -453,9 +483,10 @@ function renderPricingEditor(settings) {
   return `
     <section class="ops-panel settings-editor">
       <div class="panel-head"><div><h2>Edit Job Pricing Configuration</h2><span>Save to return to the details box</span></div>${settingsEditorActions()}</div>
-      <div class="settings-matrix">
+      <div class="settings-matrix four">
         ${pricingGroup("Time Rating", "time", settings.pricing.time, { T1: "1-2 hours", T2: "2-4 hours", T3: "5-8 hours", T4: "2 days" })}
         ${pricingGroup("Load Rating", "load", settings.pricing.load, { L1: "1 dustbin", L2: "2 dustbins", L3: "Half bakkie / half ton bag", L4: "Full bakkie / 1 ton bag" })}
+        ${pricingGroup("Waste Removal", "waste", settings.pricing.waste, { W1: "Small removal", W2: "Medium removal", W3: "Large removal", W4: "Heavy removal" })}
         ${pricingGroup("X Rating", "complexity", settings.pricing.complexity, { A: "Easy", B: "Moderate", C: "Tedious", D: "Complex" })}
       </div>
     </section>
@@ -478,20 +509,28 @@ function renderServiceTeamsControl() {
 
 function renderTeamSummaryCard(team, index) {
   const current = teamProjects(team.name, "current");
+  const planned = teamProjects(team.name, "planned");
   return `
     <article class="ops-panel team-card">
       <div class="panel-head">
-        <div><h2>${escapeHtml(team.name || `Team ${index + 1}`)}</h2><span>${escapeHtml(team.mainMember || "No main member set")}</span></div>
-        <span class="status-pill">${current.length} current</span>
+        <div><h2>${escapeHtml(team.name || `Team ${index + 1}`)}</h2><span>${escapeHtml(team.mainMember || "No owner set")}</span></div>
+        <button class="micro-link" data-copy-team-link="${teamPath(team)}">Team Link</button>
       </div>
-      <div class="data-grid settings-readonly">
-        ${dataItem("Team Owner", team.mainMember || "Not set")}
-        ${dataItem("Owner Contact", team.ownerContact || "Not set")}
-        ${dataItem("Team Link", `/team/${team.id}`)}
-        ${dataItem("Current Projects", current.length)}
+      <div class="team-lines">
+        ${teamLine("Number", phoneCopyButton(team.ownerContact || "Not set"), true)}
+        ${teamLine("Current Projects", current.length)}
       </div>
-      <div class="team-mini-list">
-        ${current.slice(0, 3).map(project => `<span>${project.reference} · ${project.status}</span>`).join("") || `<span>No current projects</span>`}
+      <div class="team-card-section">
+        <strong>Upcoming Projects</strong>
+        <div class="team-micro-list">
+          ${planned.slice(0, 4).map(project => `<span>${project.reference} · ${project.customer.firstName} · ${project.status}</span>`).join("") || `<span>No upcoming projects</span>`}
+        </div>
+      </div>
+      <div class="team-card-section">
+        <strong>Current Projects</strong>
+        <div class="team-micro-list">
+          ${current.slice(0, 4).map(project => `<span>${project.reference} · ${project.customer.firstName} · ${project.status}</span>`).join("") || `<span>No current projects</span>`}
+        </div>
       </div>
       <div class="button-row">
         <button class="ops-btn orange" data-view-team="${index}">See Team</button>
@@ -510,26 +549,34 @@ function renderTeamFullView(index) {
   const current = teamProjects(team.name, "current");
   const planned = teamProjects(team.name, "planned");
   const past = teamProjects(team.name, "past");
+  const serviceAbility = team.serviceAbilityList?.length ? team.serviceAbilityList : String(team.serviceAbility || "").split(",").map(item => item.trim()).filter(Boolean);
+  const serviceAreas = team.serviceAreasList?.length ? team.serviceAreasList.join(", ") : team.serviceAreas;
+  const members = team.membersList?.length ? formattedTeamMembers(team).join(", ") : team.members;
   return `
     <section class="ops-panel team-full">
-      <div class="record-head">
+      <div class="record-head team-view-head">
         <div>
           <span class="eyebrow">Team View</span>
           <h2>${escapeHtml(team.name)}</h2>
-          <p>${escapeHtml(team.serviceAbility || "No service ability set")}</p>
         </div>
-        <div class="button-row">
-          <button class="ops-btn light" data-back-teams>Back</button>
+        <div class="button-row team-view-actions">
+          <button class="icon-action-btn" data-calendar-manager title="Calendar manager" aria-label="Calendar manager">${calendarIcon()}</button>
+          <button class="icon-action-btn" data-report-manager title="Reports" aria-label="Reports">${reportIcon()}</button>
+          <button class="ops-btn light" data-copy-team-link="${teamPath(team)}">Team Link</button>
           <button class="ops-btn orange" data-edit-team="${index}">Edit Team</button>
         </div>
+        ${servicePills(serviceAbility)}
       </div>
-      <div class="data-grid">
-        ${dataItem("Team Owner", team.mainMember || "Not set")}
-        ${dataItem("Owner Contact", team.ownerContact || "Not set")}
-        ${dataItem("Team Members", team.members || "Not set")}
-        ${dataItem("Service Areas", team.serviceAreas || "Not set")}
-        ${dataItem("Team Link", `/team/${team.id}`)}
-        ${dataItem("Current Projects", current.length)}
+      <div class="team-priority-grid">
+        <div class="team-lines priority">
+          ${teamLine("Team Owner", team.mainMember || "Not set")}
+          ${teamLine("Owner Number", phoneCopyButton(team.ownerContact || "Not set"), true)}
+          ${teamLinkLine("Team Link", teamShareUrl(team))}
+          ${teamLine("Service Areas", serviceAreas || "Not set")}
+        </div>
+        <div class="team-lines priority team-members-priority">
+          ${teamMembersLine("Team Members", team, members)}
+        </div>
       </div>
     </section>
     <section class="split-grid">
@@ -558,23 +605,73 @@ function renderTeamEditor(index) {
       <div class="control-grid settings-grid">
         ${teamInput("Team Name", index, "name", team.name)}
         ${teamInput("Team Owner", index, "mainMember", team.mainMember)}
-        ${teamInput("Owner Contact Link", index, "ownerContact", team.ownerContact)}
-        ${teamInput("Team Link", index, "id", team.id)}
+        ${teamInput("Owner Contact Number", index, "ownerContact", team.ownerContact, "tel")}
+        <label class="field"><span class="field-label">Team Link</span><input value="/team/${escapeHtml(team.id)}" readonly /></label>
       </div>
-      <label class="field full">
-        <span class="field-label">Team Members</span>
-        <textarea data-team-index="${index}" data-team-field="members" placeholder="Name, name, name">${escapeHtml(team.members || "")}</textarea>
-      </label>
-      <label class="field full">
-        <span class="field-label">Service Ability</span>
-        <textarea data-team-index="${index}" data-team-field="serviceAbility" placeholder="Garden Clean-Up, Green Waste Removal">${escapeHtml(team.serviceAbility || "")}</textarea>
-      </label>
-      <label class="field full">
-        <span class="field-label">Service Areas</span>
-        <textarea data-team-index="${index}" data-team-field="serviceAreas" placeholder="Durbanville, Bellville, Claremont">${escapeHtml(team.serviceAreas || "")}</textarea>
-      </label>
+      ${renderTeamMembersEditor(team, index)}
+      ${renderServiceAbilityEditor(team, index)}
+      ${renderServiceAreaEditor(team, index)}
       <div class="button-row">
         <button class="ops-btn light" data-remove-team="${index}">Remove Team</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderTeamMembersEditor(team, teamIndex) {
+  const members = team.membersList || [];
+  return `
+    <section class="team-edit-section">
+      <div class="panel-head"><div><h2>Team Members</h2><span>Add team member name, surname and cell number</span></div><button class="ops-btn light" data-add-member="${teamIndex}">Add Team Member</button></div>
+      <div class="member-list">
+        ${members.map((member, memberIndex) => `
+          <div class="member-row">
+            <input placeholder="Name" value="${escapeHtml(member.name || "")}" data-team-index="${teamIndex}" data-member-index="${memberIndex}" data-member-field="name" />
+            <input placeholder="Surname" value="${escapeHtml(member.surname || "")}" data-team-index="${teamIndex}" data-member-index="${memberIndex}" data-member-field="surname" />
+            <input placeholder="Cell nr" value="${escapeHtml(member.cell || "")}" data-team-index="${teamIndex}" data-member-index="${memberIndex}" data-member-field="cell" />
+            <button class="ops-btn light" data-remove-member="${teamIndex}:${memberIndex}">Remove</button>
+          </div>
+        `).join("") || `<div class="team-project-row"><span>No team members added yet.</span></div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderServiceAbilityEditor(team, teamIndex) {
+  const selected = new Set(team.serviceAbilityList || []);
+  return `
+    <section class="team-edit-section">
+      <div class="panel-head"><div><h2>Service Ability</h2><span>Tick all services this team can perform</span></div></div>
+      <div class="service-grid tight">
+        ${services.filter(service => service !== "Not Sure").map(service => `
+          <label class="service-chip ${selected.has(service) ? "selected" : ""}">
+            <input type="checkbox" data-team-service="${teamIndex}" value="${escapeHtml(service)}" ${selected.has(service) ? "checked" : ""} />
+            ${service}
+          </label>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderServiceAreaEditor(team, teamIndex) {
+  const city = team.areaCity || Object.keys(southAfricanAreas)[0];
+  const neighborhoods = southAfricanAreas[city] || [];
+  const areaOptions = Object.entries(southAfricanAreas).flatMap(([areaCity, areas]) => areas.map(area => `${areaCity}: ${area}`));
+  return `
+    <section class="team-edit-section">
+      <div class="panel-head"><div><h2>Service Areas</h2><span>Select by South African city and neighbourhood, or add a custom area</span></div></div>
+      <div class="control-grid settings-grid">
+        <label class="field"><span class="field-label">City</span><select data-team-index="${teamIndex}" data-team-field="areaCity">${Object.keys(southAfricanAreas).map(areaCity => `<option ${areaCity === city ? "selected" : ""}>${areaCity}</option>`).join("")}</select></label>
+        <label class="field"><span class="field-label">Neighbourhood</span><select data-team-index="${teamIndex}" data-team-field="areaNeighborhood">${neighborhoods.map(area => `<option ${area === team.areaNeighborhood ? "selected" : ""}>${area}</option>`).join("")}</select></label>
+        <label class="field"><span class="field-label">Search / Custom Area</span><input list="sa-area-options-${teamIndex}" placeholder="Search or type neighbourhood" data-team-index="${teamIndex}" data-team-field="customArea" value="${escapeHtml(team.customArea || "")}" /></label>
+        <datalist id="sa-area-options-${teamIndex}">
+          ${areaOptions.map(area => `<option value="${escapeHtml(area)}"></option>`).join("")}
+        </datalist>
+      </div>
+      <div class="button-row"><button class="ops-btn light" data-add-area="${teamIndex}">Add Area</button></div>
+      <div class="service-settings">
+        ${(team.serviceAreasList || []).map((area, areaIndex) => `<span>${escapeHtml(area)} <button class="chip-remove" data-remove-area="${teamIndex}:${areaIndex}">×</button></span>`).join("") || `<span>No areas selected</span>`}
       </div>
     </section>
   `;
@@ -593,6 +690,60 @@ function teamProjectPanel(title, projects) {
         `).join("") || `<div class="team-project-row"><span>No projects yet</span></div>`}
       </div>
     </section>
+  `;
+}
+
+function renderTeamPortal(team, index) {
+  const current = teamProjects(team.name, "current");
+  const planned = teamProjects(team.name, "planned");
+  const past = teamProjects(team.name, "past");
+  const serviceAbility = team.serviceAbilityList?.length ? team.serviceAbilityList : String(team.serviceAbility || "").split(",").map(item => item.trim()).filter(Boolean);
+  const serviceAreas = team.serviceAreasList?.length ? team.serviceAreasList : String(team.serviceAreas || "").split(",").map(item => item.trim()).filter(Boolean);
+  const members = formattedTeamMembers(team);
+  return `
+    <main class="team-portal-shell">
+      <section class="team-portal-header">
+        <img class="team-portal-logo" src="/assets/CGG_BO_Logo.png" alt="City Garden Guys" />
+        <div>
+          <span class="eyebrow">Team Link</span>
+          <h1>${escapeHtml(team.name)}</h1>
+          <p>${escapeHtml(team.mainMember || "Team owner")} · ${phoneCopyButton(team.ownerContact || "No number set")}</p>
+        </div>
+      </section>
+      <section class="team-portal-grid">
+        <article class="ops-panel team-full">
+          <div class="panel-head"><div><h2>Team Info</h2><span>Details visible to this team owner</span></div><span class="status-pill">${current.length} current</span></div>
+          <div class="team-lines dense">
+            ${teamLine("Owner", team.mainMember || "Not set")}
+            ${teamLine("Contact Number", phoneCopyButton(team.ownerContact || "Not set"), true)}
+            ${teamMembersLine("Team Members", team, members.join(", ") || "Not set")}
+            ${teamLine("Service Ability", serviceAbility.join(", ") || "Not set")}
+            ${teamLine("Service Areas", serviceAreas.join(", ") || "Not set")}
+            ${teamLine("Team Link", teamPath(team))}
+          </div>
+        </article>
+        ${teamPortalProjectPanel("Current Projects", current)}
+        ${teamPortalProjectPanel("Upcoming Projects", planned)}
+        ${teamPortalProjectPanel("Past Projects", past)}
+      </section>
+      <div class="toast" id="toast"></div>
+    </main>
+  `;
+}
+
+function teamPortalProjectPanel(title, projects) {
+  return `
+    <article class="ops-panel">
+      <div class="panel-head"><div><h2>${title}</h2><span>${projects.length} assigned</span></div></div>
+      <div class="team-project-list">
+        ${projects.map(project => `
+          <div class="team-project-row">
+            <strong>${project.reference}</strong>
+            <span>${project.customer.firstName} ${project.customer.lastName} · ${fullAddress(project)} · ${project.status}</span>
+          </div>
+        `).join("") || `<div class="team-project-row"><span>No projects in this section</span></div>`}
+      </div>
+    </article>
   `;
 }
 
@@ -805,8 +956,17 @@ function renderProjectSummary(project) {
 function bindOffice() {
   document.querySelectorAll("[data-office-tab]").forEach(button => button.addEventListener("click", () => {
     state.officeTab = button.dataset.officeTab;
+    state.mobileMenuOpen = false;
     render();
   }));
+  document.getElementById("mobileMenuToggle")?.addEventListener("click", () => {
+    state.mobileMenuOpen = !state.mobileMenuOpen;
+    render();
+  });
+  document.getElementById("mobileMenuScrim")?.addEventListener("click", () => {
+    state.mobileMenuOpen = false;
+    render();
+  });
   document.querySelectorAll("[data-select-project]").forEach(button => button.addEventListener("click", () => {
     state.selectedRef = button.dataset.selectProject;
     render();
@@ -858,6 +1018,46 @@ function bindOffice() {
     field.addEventListener("input", updateTeamField);
     field.addEventListener("change", updateTeamField);
   });
+  document.querySelectorAll("[data-member-index][data-member-field]").forEach(field => {
+    field.addEventListener("input", updateTeamMemberField);
+    field.addEventListener("change", updateTeamMemberField);
+  });
+  document.querySelectorAll("[data-add-member]").forEach(button => button.addEventListener("click", () => {
+    state.serviceTeams[Number(button.dataset.addMember)].membersList.push({ name: "", surname: "", cell: "" });
+    render();
+  }));
+  document.querySelectorAll("[data-remove-member]").forEach(button => button.addEventListener("click", () => {
+    const [teamIndex, memberIndex] = button.dataset.removeMember.split(":").map(Number);
+    const team = state.serviceTeams[teamIndex];
+    team.membersList.splice(memberIndex, 1);
+    syncTeamMembers(team);
+    render();
+  }));
+  document.querySelectorAll("[data-team-service]").forEach(box => box.addEventListener("change", () => {
+    const team = state.serviceTeams[Number(box.dataset.teamService)];
+    const selected = new Set(team.serviceAbilityList || []);
+    box.checked ? selected.add(box.value) : selected.delete(box.value);
+    team.serviceAbilityList = [...selected];
+    team.serviceAbility = team.serviceAbilityList.join(", ");
+    render();
+  }));
+  document.querySelectorAll("[data-add-area]").forEach(button => button.addEventListener("click", () => {
+    const team = state.serviceTeams[Number(button.dataset.addArea)];
+    const area = team.customArea || `${team.areaCity}: ${team.areaNeighborhood}`;
+    const selected = new Set(team.serviceAreasList || []);
+    selected.add(area);
+    team.serviceAreasList = [...selected];
+    team.serviceAreas = team.serviceAreasList.join(", ");
+    team.customArea = "";
+    render();
+  }));
+  document.querySelectorAll("[data-remove-area]").forEach(button => button.addEventListener("click", () => {
+    const [teamIndex, areaIndex] = button.dataset.removeArea.split(":").map(Number);
+    const team = state.serviceTeams[teamIndex];
+    team.serviceAreasList.splice(areaIndex, 1);
+    team.serviceAreas = team.serviceAreasList.join(", ");
+    render();
+  }));
   document.getElementById("addTeam")?.addEventListener("click", () => {
     state.serviceTeams.push(blankTeam());
     state.editingTeamIndex = state.serviceTeams.length - 1;
@@ -881,6 +1081,10 @@ function bindOffice() {
     state.editingTeamIndex = null;
     render();
   }));
+  document.querySelectorAll("[data-copy-team-link]").forEach(button => button.addEventListener("click", () => {
+    copyTeamLink(button.dataset.copyTeamLink);
+  }));
+  bindCopyActions();
   document.querySelectorAll("[data-edit-team]").forEach(button => button.addEventListener("click", () => {
     state.editingTeamIndex = Number(button.dataset.editTeam);
     render();
@@ -889,6 +1093,12 @@ function bindOffice() {
     state.selectedTeamIndex = null;
     state.editingTeamIndex = null;
     render();
+  }));
+  document.querySelectorAll("[data-calendar-manager]").forEach(button => button.addEventListener("click", () => {
+    showToast("Calendar manager coming next: allocate job time slots.");
+  }));
+  document.querySelectorAll("[data-report-manager]").forEach(button => button.addEventListener("click", () => {
+    showToast("Reports coming next: week and month team views.");
   }));
   document.querySelectorAll("[data-cancel-team-edit]").forEach(button => button.addEventListener("click", () => {
     state.editingTeamIndex = null;
@@ -902,7 +1112,10 @@ function bindOffice() {
     render();
   }));
   document.querySelectorAll("[data-open-project]").forEach(button => button.addEventListener("click", () => go(`/project/${button.dataset.openProject}`)));
-  document.getElementById("openEstimate")?.addEventListener("click", () => go("/estimate"));
+  document.getElementById("openEstimate")?.addEventListener("click", () => {
+    state.mobileMenuOpen = false;
+    go("/estimate");
+  });
   document.getElementById("saveProject")?.addEventListener("click", () => {
     saveAll();
     showToast("Project changes saved locally.");
@@ -963,6 +1176,7 @@ function bindEstimate() {
 }
 
 function bindPublicProject(project) {
+  bindCopyActions();
   document.querySelectorAll("[data-public-action]").forEach(button => button.addEventListener("click", () => {
     if (button.dataset.publicAction === "Quote accepted") {
       project.status = "Quote Accepted";
@@ -972,6 +1186,10 @@ function bindPublicProject(project) {
     }
     showToast(button.dataset.publicAction);
   }));
+}
+
+function bindCopyActions() {
+  document.querySelectorAll("[data-copy-phone]").forEach(button => button.addEventListener("click", () => copyPhoneNumber(button.dataset.copyPhone)));
 }
 
 function updateProjectField(event) {
@@ -1002,7 +1220,56 @@ function updatePricingFlatField(event) {
 }
 
 function updateTeamField(event) {
-  state.serviceTeams[Number(event.target.dataset.teamIndex)][event.target.dataset.teamField] = event.target.value;
+  const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
+  const field = event.target.dataset.teamField;
+  team[field] = event.target.value;
+  if (field === "name") team.id = slugifyTeam(team.name);
+  if (field === "areaCity") {
+    team.areaNeighborhood = (southAfricanAreas[team.areaCity] || [])[0] || "";
+    team.customArea = "";
+    render();
+  }
+}
+
+function updateTeamMemberField(event) {
+  const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
+  const member = team.membersList[Number(event.target.dataset.memberIndex)];
+  member[event.target.dataset.memberField] = event.target.value;
+  syncTeamMembers(team);
+}
+
+function copyTeamLink(path) {
+  const url = toAbsoluteUrl(path);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(() => showToast("Team owner link copied."), () => showToast(url));
+    return;
+  }
+  showToast(url);
+}
+
+function copyPhoneNumber(number) {
+  const value = String(number || "").trim();
+  if (!normalizeCell(value)) {
+    showToast("No cell number to copy.");
+    return;
+  }
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value).then(() => showToast("Cell number copied."), () => showToast(value));
+    return;
+  }
+  showToast(value);
+}
+
+function syncTeamMembers(team) {
+  team.members = (team.membersList || []).map(item => {
+    const name = [item.name, item.surname].filter(Boolean).join(" ");
+    return item.cell ? `${name} (${item.cell})`.trim() : name;
+  }).filter(Boolean).join(", ");
+}
+
+function slugifyTeam(name) {
+  const slug = String(name || "new-team").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return `team-${slug || "new-team"}`;
 }
 
 function createProjectFromForm() {
@@ -1047,10 +1314,18 @@ function calculatePrice(rating, form) {
   const pricing = state.settings.pricing;
   const time = pricing.time[rating.time] || 0;
   const load = pricing.load[rating.load] || 0;
+  const waste = pricing.waste[wasteRatingForAnswer(form.estimateAnswers.waste)] || 0;
   const complexity = pricing.complexity[rating.complexity] || 0;
   const urgent = form.estimateAnswers.urgency === "ASAP" ? pricing.urgentAsap : 0;
   const areas = Math.max(0, form.areas.length - 1) * pricing.extraArea;
-  return time + load + complexity + urgent + areas;
+  return time + load + waste + complexity + urgent + areas;
+}
+
+function wasteRatingForAnswer(answer) {
+  if (answer === "1-2 dustbins") return "W1";
+  if (answer === "Half bakkie load") return "W2";
+  if (answer === "Full bakkie load") return "W4";
+  return "W3";
 }
 
 function seedProject(reference, firstName, lastName, suburb, status, price, time, load, complexity) {
@@ -1120,8 +1395,8 @@ function inputControl(label, field, value, type = "text") {
   return `<label class="field"><span class="field-label">${label}</span><input type="${type}" value="${escapeHtml(value || "")}" data-project-field="${field}" /></label>`;
 }
 
-function teamInput(label, index, field, value) {
-  return `<label class="field"><span class="field-label">${label}</span><input value="${escapeHtml(value || "")}" data-team-index="${index}" data-team-field="${field}" /></label>`;
+function teamInput(label, index, field, value, type = "text") {
+  return `<label class="field"><span class="field-label">${label}</span><input type="${type}" value="${escapeHtml(value || "")}" data-team-index="${index}" data-team-field="${field}" /></label>`;
 }
 
 function settingsInput(label, group, field, value, type = "text") {
@@ -1151,7 +1426,51 @@ function formInput(field, label, value, group, type = "text") {
 }
 
 function dataItem(label, value) {
-  return `<div class="data-item"><span>${label}</span><strong>${escapeHtml(String(value || "Not supplied"))}</strong></div>`;
+  const display = label === "Cell" ? phoneCopyButton(value || "Not supplied") : escapeHtml(String(value || "Not supplied"));
+  return `<div class="data-item"><span>${label}</span><strong>${display}</strong></div>`;
+}
+
+function settingLine(label, value) {
+  return `<div class="setting-line"><span>${label}:</span><strong>${escapeHtml(String(value || "Not supplied"))}</strong></div>`;
+}
+
+function teamLine(label, value, isHtml = false) {
+  return `<div class="team-line"><span>${label}:</span><strong>${isHtml ? value : escapeHtml(String(value || "Not supplied"))}</strong></div>`;
+}
+
+function teamLinkLine(label, path) {
+  return `<div class="team-line"><span>${label}:</span><strong><a href="${escapeHtml(path)}" target="_blank" rel="noopener noreferrer">${escapeHtml(path)}</a></strong></div>`;
+}
+
+function calendarIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg>`;
+}
+
+function reportIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 3v6h6M8 17v-4M12 17v-7M16 17v-2"/></svg>`;
+}
+
+function teamMembersLine(label, team, fallback) {
+  const members = team.membersList || [];
+  if (!members.length) return teamLine(label, fallback || "Not set");
+  const html = members.map(member => {
+    const name = [member.name, member.surname].filter(Boolean).join(" ") || "Team member";
+    const cell = member.cell ? phoneCopyButton(member.cell) : `<span class="muted-inline">No cell</span>`;
+    return `<span class="member-copy-item">${escapeHtml(name)} ${cell}</span>`;
+  }).join("");
+  return `<div class="team-line team-member-line"><span>${label}:</span><strong>${html}</strong></div>`;
+}
+
+function servicePills(items) {
+  const list = Array.isArray(items) ? items : String(items || "").split(",").map(item => item.trim()).filter(Boolean);
+  if (!list.length) return `<div class="team-service-pills"><span>No service ability set</span></div>`;
+  return `<div class="team-service-pills">${list.map(item => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+}
+
+function phoneCopyButton(number) {
+  const value = String(number || "").trim();
+  if (!normalizeCell(value)) return escapeHtml(value || "Not supplied");
+  return `<button type="button" class="copy-phone" data-copy-phone="${escapeHtml(value)}" title="Copy cell number">${escapeHtml(value)}</button>`;
 }
 
 function areaTile(area) {
@@ -1211,6 +1530,33 @@ function getProjectFromPath() {
   return state.projects.find(project => project.reference === match[1]) || state.projects[0];
 }
 
+function getTeamFromPath() {
+  const match = window.location.pathname.match(/\/team\/([a-z0-9-]+)/);
+  if (!match) return null;
+  const index = state.serviceTeams.findIndex(team => team.id === match[1]);
+  if (index < 0) return null;
+  return { team: state.serviceTeams[index], index };
+}
+
+function teamPath(team) {
+  return `/team/${team.id || slugifyTeam(team.name)}`;
+}
+
+function teamShareUrl(team) {
+  return toAbsoluteUrl(teamPath(team));
+}
+
+function toAbsoluteUrl(path) {
+  return `${window.location.origin}${path}`;
+}
+
+function formattedTeamMembers(team) {
+  return (team.membersList || []).map(member => {
+    const name = [member.name, member.surname].filter(Boolean).join(" ");
+    return member.cell ? `${name} (${member.cell})`.trim() : name;
+  }).filter(Boolean);
+}
+
 function nextReference() {
   const highest = state.projects.reduce((max, project) => Math.max(max, Number(project.reference.split("-").pop()) || 124), 124);
   return `CGG-2026-${String(highest + 1).padStart(5, "0")}`;
@@ -1251,6 +1597,7 @@ function mergeSettings(saved) {
       ...(saved.pricing || {}),
       time: { ...defaultSettings.pricing.time, ...((saved.pricing || {}).time || {}) },
       load: { ...defaultSettings.pricing.load, ...((saved.pricing || {}).load || {}) },
+      waste: { ...defaultSettings.pricing.waste, ...((saved.pricing || {}).waste || {}) },
       complexity: { ...defaultSettings.pricing.complexity, ...((saved.pricing || {}).complexity || {}) },
     },
   };
@@ -1267,18 +1614,32 @@ function loadServiceTeams() {
 
 function normalizeTeam(team) {
   const id = team.id || `team-${String(team.name || "new-team").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+  const membersList = team.membersList || String(team.members || "").split(",").map((member) => {
+    const parts = member.trim().split(" ").filter(Boolean);
+    return { name: parts[0] || "", surname: parts.slice(1).join(" "), cell: "" };
+  }).filter((member) => member.name || member.surname || member.cell);
   return {
     id,
     name: team.name || "New Team",
     mainMember: team.mainMember || "",
     ownerContact: team.ownerContact || "",
     members: team.members || "",
+    membersList,
     serviceAbility: team.serviceAbility || "",
+    serviceAbilityList: team.serviceAbilityList || String(team.serviceAbility || "").split(",").map((item) => item.trim()).filter(Boolean),
     serviceAreas: team.serviceAreas || "",
+    serviceAreasList: team.serviceAreasList || String(team.serviceAreas || "").split(",").map((item) => item.trim()).filter(Boolean),
+    areaCity: team.areaCity || Object.keys(southAfricanAreas)[0],
+    areaNeighborhood: team.areaNeighborhood || southAfricanAreas[team.areaCity || Object.keys(southAfricanAreas)[0]][0],
+    customArea: team.customArea || "",
   };
 }
 
 function saveServiceTeams() {
+  state.serviceTeams.forEach(team => {
+    team.id = team.id || slugifyTeam(team.name);
+    syncTeamMembers(team);
+  });
   localStorage.setItem("cggServiceTeams", JSON.stringify(state.serviceTeams));
 }
 
@@ -1334,8 +1695,14 @@ function blankTeam() {
     mainMember: "",
     ownerContact: "",
     members: "",
+    membersList: [],
     serviceAbility: "",
+    serviceAbilityList: [],
     serviceAreas: "",
+    serviceAreasList: [],
+    areaCity: "Cape Town",
+    areaNeighborhood: "Durbanville",
+    customArea: "",
   };
 }
 
