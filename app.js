@@ -8,6 +8,33 @@ const services = [
   "Not Sure",
 ];
 
+const teamColorOptions = [
+  { name: "Blue", value: "#2563EB" },
+  { name: "Purple", value: "#7C3AED" },
+  { name: "Pink", value: "#DB2777" },
+  { name: "Red", value: "#DC2626" },
+  { name: "Slate", value: "#475569" },
+  { name: "Cyan", value: "#0891B2" },
+];
+
+const calendarDays = [
+  { key: "mon", label: "Monday", short: "Mon" },
+  { key: "tue", label: "Tuesday", short: "Tue" },
+  { key: "wed", label: "Wednesday", short: "Wed" },
+  { key: "thu", label: "Thursday", short: "Thu" },
+  { key: "fri", label: "Friday", short: "Fri" },
+  { key: "sat", label: "Saturday", short: "Sat" },
+];
+
+const defaultAvailability = {
+  mon: { enabled: true, start: "08:00", end: "16:00" },
+  tue: { enabled: true, start: "08:00", end: "16:00" },
+  wed: { enabled: true, start: "08:00", end: "16:00" },
+  thu: { enabled: true, start: "08:00", end: "16:00" },
+  fri: { enabled: true, start: "08:00", end: "16:00" },
+  sat: { enabled: true, start: "08:00", end: "13:00" },
+};
+
 const southAfricanAreas = {
   "Cape Town": ["Atlantic Seaboard", "Bellville", "Bishopscourt", "Blouberg", "Brackenfell", "Camps Bay", "Century City", "Claremont", "Constantia", "Durbanville", "Fish Hoek", "Gardens", "Goodwood", "Green Point", "Kenilworth", "Khayelitsha", "Kraaifontein", "Milnerton", "Mitchells Plain", "Newlands", "Observatory", "Parow", "Pinelands", "Rondebosch", "Sea Point", "Somerset West", "Stellenbosch", "Table View", "Tokai", "Woodstock"],
   Johannesburg: ["Alexandra", "Bedfordview", "Benoni", "Bryanston", "Edenvale", "Fourways", "Germiston", "Greenside", "Houghton", "Kempton Park", "Midrand", "Melville", "Northcliff", "Randburg", "Roodepoort", "Rosebank", "Sandton", "Soweto", "Sunninghill", "Wynberg"],
@@ -44,6 +71,7 @@ const defaultServiceTeams = [
     name: "Team Aloe",
     mainMember: "Sipho Maseko",
     ownerContact: "071 220 1407",
+    color: "#2563EB",
     members: "Sipho Maseko, Daniel Naidoo",
     serviceAbility: "Garden Clean-Up, Green Waste Removal",
     serviceAreas: "Durbanville, Bellville, Table View",
@@ -53,6 +81,7 @@ const defaultServiceTeams = [
     name: "Team Spekboom",
     mainMember: "Mia Jacobs",
     ownerContact: "082 441 9033",
+    color: "#7C3AED",
     members: "Mia Jacobs, Lerato Khumalo",
     serviceAbility: "Branch Cutting & Removal, Post-Storm Clean-Up",
     serviceAreas: "Claremont, Rondebosch, Newlands",
@@ -62,6 +91,7 @@ const defaultServiceTeams = [
     name: "Team Acacia",
     mainMember: "Daniel Naidoo",
     ownerContact: "079 811 5570",
+    color: "#DB2777",
     members: "Daniel Naidoo, Priya Reddy",
     serviceAbility: "Small Shrub & Bush Removal, General Outdoor Clean-Up",
     serviceAreas: "Somerset West, Stellenbosch",
@@ -83,6 +113,16 @@ const defaultSettings = {
     complexity: { A: 0, B: 150, C: 350, D: 650 },
     urgentAsap: 250,
     extraArea: 180,
+  },
+  quoteForm: {
+    title: "Get Your Garden Clean-Up Estimate",
+    intro: "Upload a few photos, tell us what needs to be done, and receive your estimate fast.",
+    buttonText: "Get My Estimate",
+    defaultSource: "Internal",
+    links: [
+      { name: "Flyer QR Code", source: "flyer-qr-code" },
+      { name: "Facebook Bio", source: "facebook-bio" },
+    ],
   },
 };
 
@@ -112,6 +152,8 @@ const state = {
   editingSettings: null,
   selectedTeamIndex: null,
   editingTeamIndex: null,
+  teamCalendarMode: "week",
+  teamCalendarStart: weekStartKey(new Date()),
   mobileMenuOpen: false,
   form: blankForm(),
 };
@@ -121,6 +163,7 @@ function render() {
   if (pathTeam) {
     app().innerHTML = renderTeamPortal(pathTeam.team, pathTeam.index);
     bindCopyActions();
+    bindTeamPortal(pathTeam.index);
     return;
   }
 
@@ -149,6 +192,7 @@ function renderBackOffice() {
   const project = selectedProject();
   const settingsOnly = state.officeTab === "settings";
   const teamsOnly = state.officeTab === "teams";
+  const notificationsOnly = state.officeTab === "notifications";
   return `
     <main class="ops-shell ${state.mobileMenuOpen ? "menu-open" : ""}">
       <button type="button" class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open management menu" aria-expanded="${state.mobileMenuOpen ? "true" : "false"}">
@@ -160,6 +204,7 @@ function renderBackOffice() {
           <img class="ops-logo real-logo" src="assets/CGG_BO_Logo.png" alt="City Garden Guys" />
         </div>
         <nav class="ops-nav">
+          ${officeTab("notifications", "Notifications")}
           ${officeTab("overview", "Overview")}
           ${officeTab("pipeline", "Pipeline")}
           ${officeTab("quote", "Quote Control")}
@@ -171,8 +216,18 @@ function renderBackOffice() {
           ${officeTab("settings", "Admin Settings")}
         </div>
       </aside>
-      <section class="ops-main">
-        ${settingsOnly ? `
+      <section class="ops-main ${notificationsOnly ? "notifications-view" : ""}">
+        ${notificationsOnly ? `
+        <header class="ops-topbar settings-topbar">
+          <div>
+            <h1>Notifications</h1>
+            <p>Review new projects and team movement updates before they move into the pipeline.</p>
+          </div>
+        </header>
+        <section class="settings-only">
+          ${renderNotificationsControl()}
+        </section>
+        ` : settingsOnly ? `
         <header class="ops-topbar settings-topbar">
           <div>
             <h1>Admin Settings</h1>
@@ -236,11 +291,50 @@ function renderBackOffice() {
 }
 
 function renderOfficeTab(project) {
+  if (state.officeTab === "notifications") return renderNotificationsControl();
   if (state.officeTab === "pipeline") return renderPipelineControl(project);
   if (state.officeTab === "quote") return renderQuoteControl(project);
   if (state.officeTab === "portal") return renderPortalControl(project);
   if (state.officeTab === "settings") return renderSettingsControl();
   return renderOverviewControl(project);
+}
+
+function renderNotificationsControl() {
+  const intake = projectNotifications();
+  const movements = teamMovementNotifications();
+  return `
+    <section class="split-grid">
+      <div class="ops-panel">
+        <div class="panel-head"><div><h2>New Projects</h2><span>${intake.length} waiting for back office review</span></div></div>
+        <div class="notification-list">
+          ${intake.map(notificationCard).join("") || `<div class="empty-note">No new projects waiting.</div>`}
+        </div>
+      </div>
+      <div class="ops-panel">
+        <div class="panel-head"><div><h2>Team Updates</h2><span>${movements.length} movement updates</span></div></div>
+        <div class="notification-list">
+          ${movements.map(notificationCard).join("") || `<div class="empty-note">No team movement updates.</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function notificationCard(item) {
+  return `
+    <article class="notification-card ${item.kind}">
+      <div>
+        <span class="notification-type">${item.type}</span>
+        <strong>${item.team ? `${teamBadge(item.team)} ${escapeHtml(item.title)}` : escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+        <small>${escapeHtml(item.meta)}</small>
+      </div>
+      <div class="notification-actions">
+        <button class="ops-btn light" data-open-notification="${item.reference}">Open</button>
+        ${item.kind === "project" ? `<button class="ops-btn orange" data-handle-notification="${item.reference}">Handle</button>` : ""}
+      </div>
+    </article>
+  `;
 }
 
 function renderOverviewControl(project) {
@@ -251,6 +345,7 @@ function renderOverviewControl(project) {
           <span class="eyebrow">${project.reference}</span>
           <h2>${project.customer.firstName} ${project.customer.lastName}</h2>
           <p>${fullAddress(project)}</p>
+          ${teamBadge(project.team)}
         </div>
         <span class="status-pill">${project.status}</span>
       </div>
@@ -258,6 +353,7 @@ function renderOverviewControl(project) {
         ${selectControl("Status", "status", statuses, project.status)}
         ${selectControl("Assigned Team", "team", teamOptions(), project.team || "Unassigned")}
         ${inputControl("Scheduled Date", "scheduledDate", project.scheduledDate || "")}
+        ${inputControl("Start Time", "scheduledTime", project.scheduledTime || "09:00", "time")}
         ${inputControl("Quote Amount", "price", project.price, "number")}
       </div>
     </section>
@@ -269,6 +365,7 @@ function renderOverviewControl(project) {
           ${dataItem("Email", project.customer.email)}
           ${dataItem("Preferred", project.customer.contactMethod)}
           ${dataItem("Suburb", project.property.suburb)}
+          ${dataItem("Source", project.source || "Internal")}
         </div>
       </div>
       <div class="ops-panel">
@@ -377,6 +474,7 @@ function renderSettingsControl() {
   if (editing === "finance") return renderFinanceEditor(settings);
   if (editing === "addons") return renderAddOnsEditor(settings);
   if (editing === "pricing") return renderPricingEditor(settings);
+  if (editing === "quoteForm") return renderQuoteFormEditor(settings);
   if (editing === "services") return renderServicesSummary(true);
   return `
     <section class="split-grid">
@@ -393,6 +491,11 @@ function renderSettingsControl() {
         ["Formula", "Time + Load + Waste + Complexity + Urgency + Extra Areas"],
       ], "addons")}
     </section>
+    ${settingsSummaryCard("Quote Form", "Manage the internal quote creator and source-tracked form links", [
+      ["Form Title", settings.quoteForm.title],
+      ["Primary Button", settings.quoteForm.buttonText],
+      ["Form Links", settings.quoteForm.links.length],
+    ], "quoteForm")}
     ${pricingSummaryCard(settings)}
     ${renderServicesSummary(false)}
   `;
@@ -493,6 +596,42 @@ function renderPricingEditor(settings) {
   `;
 }
 
+function renderQuoteFormEditor(settings) {
+  return `
+    <section class="ops-panel settings-editor">
+      <div class="panel-head"><div><h2>Quote Form</h2><span>Edit the internal quote creator and create trackable source links</span></div>${settingsEditorActions()}</div>
+      <section class="team-edit-section">
+        <div class="panel-head"><div><h2>Edit Form</h2><span>The quote creator stays the same; these details control the customer-facing wording.</span></div></div>
+        <div class="control-grid settings-grid">
+          ${settingsInput("Headline", "quoteForm", "title", settings.quoteForm.title)}
+          ${settingsInput("Button Text", "quoteForm", "buttonText", settings.quoteForm.buttonText)}
+          ${settingsInput("Default Source", "quoteForm", "defaultSource", settings.quoteForm.defaultSource)}
+        </div>
+        <label class="field full"><span class="field-label">Intro Text</span><textarea data-setting-group="quoteForm" data-setting-field="intro">${escapeHtml(settings.quoteForm.intro)}</textarea></label>
+      </section>
+      <section class="team-edit-section">
+        <div class="panel-head"><div><h2>Form Links</h2><span>Create source-specific links for QR codes, flyers and campaigns.</span></div><button class="ops-btn light" data-add-form-link>Add Form Link</button></div>
+        <div class="form-link-list">
+          ${settings.quoteForm.links.map((link, index) => formLinkRow(link, index)).join("") || `<div class="empty-note">No source links yet.</div>`}
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function formLinkRow(link, index) {
+  const url = `/estimate?source=${encodeURIComponent(link.source || "")}`;
+  return `
+    <div class="form-link-row">
+      <input placeholder="Link name" value="${escapeHtml(link.name || "")}" data-form-link-index="${index}" data-form-link-field="name" />
+      <input placeholder="source-id" value="${escapeHtml(link.source || "")}" data-form-link-index="${index}" data-form-link-field="source" />
+      <code>${escapeHtml(url)}</code>
+      <button class="ops-btn light" data-copy-form-link="${escapeHtml(url)}">Copy</button>
+      <button class="ops-btn light" data-remove-form-link="${index}">Remove</button>
+    </div>
+  `;
+}
+
 function settingsEditorActions() {
   return `<div class="button-row"><button class="ops-btn light" data-cancel-settings>Cancel</button><button class="ops-btn orange" data-save-settings-window>Save Changes</button></div>`;
 }
@@ -508,29 +647,23 @@ function renderServiceTeamsControl() {
 }
 
 function renderTeamSummaryCard(team, index) {
-  const current = teamProjects(team.name, "current");
-  const planned = teamProjects(team.name, "planned");
+  const current = teamProjects(team.name, "today");
+  const planned = teamProjects(team.name, "upcoming");
   return `
-    <article class="ops-panel team-card">
+    <article class="ops-panel team-card" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <div class="panel-head">
         <div><h2>${escapeHtml(team.name || `Team ${index + 1}`)}</h2><span>${escapeHtml(team.mainMember || "No owner set")}</span></div>
         <button class="micro-link" data-copy-team-link="${teamPath(team)}">Team Link</button>
       </div>
+      <div class="team-card-section">
+        <strong>Today's Projects</strong>
+        <div class="team-micro-list">
+          ${current.slice(0, 4).map(project => `<span>${project.reference} · ${project.customer.firstName} · ${project.status}</span>`).join("") || `<span>No projects today</span>`}
+        </div>
+      </div>
       <div class="team-lines">
         ${teamLine("Number", phoneCopyButton(team.ownerContact || "Not set"), true)}
-        ${teamLine("Current Projects", current.length)}
-      </div>
-      <div class="team-card-section">
-        <strong>Upcoming Projects</strong>
-        <div class="team-micro-list">
-          ${planned.slice(0, 4).map(project => `<span>${project.reference} · ${project.customer.firstName} · ${project.status}</span>`).join("") || `<span>No upcoming projects</span>`}
-        </div>
-      </div>
-      <div class="team-card-section">
-        <strong>Current Projects</strong>
-        <div class="team-micro-list">
-          ${current.slice(0, 4).map(project => `<span>${project.reference} · ${project.customer.firstName} · ${project.status}</span>`).join("") || `<span>No current projects</span>`}
-        </div>
+        ${teamLine("Upcoming Projects", planned.length)}
       </div>
       <div class="button-row">
         <button class="ops-btn orange" data-view-team="${index}">See Team</button>
@@ -546,21 +679,17 @@ function renderTeamFullView(index) {
     state.selectedTeamIndex = null;
     return renderServiceTeamsControl();
   }
-  const current = teamProjects(team.name, "current");
-  const planned = teamProjects(team.name, "planned");
-  const past = teamProjects(team.name, "past");
   const serviceAbility = team.serviceAbilityList?.length ? team.serviceAbilityList : String(team.serviceAbility || "").split(",").map(item => item.trim()).filter(Boolean);
   const serviceAreas = team.serviceAreasList?.length ? team.serviceAreasList.join(", ") : team.serviceAreas;
   const members = team.membersList?.length ? formattedTeamMembers(team).join(", ") : team.members;
   return `
-    <section class="ops-panel team-full">
+    <section class="ops-panel team-full" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <div class="record-head team-view-head">
         <div>
           <span class="eyebrow">Team View</span>
           <h2>${escapeHtml(team.name)}</h2>
         </div>
         <div class="button-row team-view-actions">
-          <button class="icon-action-btn" data-calendar-manager title="Calendar manager" aria-label="Calendar manager">${calendarIcon()}</button>
           <button class="icon-action-btn" data-report-manager title="Reports" aria-label="Reports">${reportIcon()}</button>
           <button class="ops-btn light" data-copy-team-link="${teamPath(team)}">Team Link</button>
           <button class="ops-btn orange" data-edit-team="${index}">Edit Team</button>
@@ -579,11 +708,7 @@ function renderTeamFullView(index) {
         </div>
       </div>
     </section>
-    <section class="split-grid">
-      ${teamProjectPanel("Current Projects", current)}
-      ${teamProjectPanel("Planned Projects", planned)}
-    </section>
-    ${teamProjectPanel("Past Projects", past)}
+    ${renderTeamCalendar(team)}
   `;
 }
 
@@ -608,11 +733,62 @@ function renderTeamEditor(index) {
         ${teamInput("Owner Contact Number", index, "ownerContact", team.ownerContact, "tel")}
         <label class="field"><span class="field-label">Team Link</span><input value="/team/${escapeHtml(team.id)}" readonly /></label>
       </div>
+      ${renderTeamColourEditor(team, index)}
+      ${renderTeamAvailabilityEditor(team, index)}
       ${renderTeamMembersEditor(team, index)}
       ${renderServiceAbilityEditor(team, index)}
       ${renderServiceAreaEditor(team, index)}
       <div class="button-row">
         <button class="ops-btn light" data-remove-team="${index}">Remove Team</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderTeamColourEditor(team, teamIndex) {
+  const selected = team.color || teamColorOptions[0].value;
+  return `
+    <section class="team-edit-section">
+      <div class="panel-head"><div><h2>Team Colour</h2><span>Choose an identifier colour. Green and orange are reserved for CGG status and brand use.</span></div></div>
+      <div class="team-colour-grid">
+        ${teamColorOptions.map(option => `
+          <label class="team-colour-option ${selected === option.value ? "selected" : ""}">
+            <input type="radio" name="team-colour-${teamIndex}" value="${escapeHtml(option.value)}" data-team-index="${teamIndex}" data-team-field="color" ${selected === option.value ? "checked" : ""} />
+            <span style="--swatch: ${escapeHtml(option.value)}"></span>
+            ${escapeHtml(option.name)}
+          </label>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderTeamAvailabilityEditor(team, teamIndex) {
+  return `
+    <section class="team-edit-section">
+      <div class="panel-head"><div><h2>Team Availability</h2><span>Set working times and block unavailable calendar slots.</span></div><button class="ops-btn light" data-add-block-time="${teamIndex}">Block Time</button></div>
+      <div class="availability-grid">
+        ${calendarDays.map(day => {
+          const availability = team.availability[day.key] || defaultAvailability[day.key];
+          return `
+            <div class="availability-row">
+              <label><input type="checkbox" data-team-index="${teamIndex}" data-availability-day="${day.key}" data-availability-field="enabled" ${availability.enabled ? "checked" : ""} /> ${day.short}</label>
+              <input type="time" value="${escapeHtml(availability.start)}" data-team-index="${teamIndex}" data-availability-day="${day.key}" data-availability-field="start" />
+              <input type="time" value="${escapeHtml(availability.end)}" data-team-index="${teamIndex}" data-availability-day="${day.key}" data-availability-field="end" />
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div class="block-time-list">
+        ${(team.blockedTimes || []).map((block, blockIndex) => `
+          <div class="block-time-row">
+            <input type="date" value="${escapeHtml(block.date || todayKey())}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="date" />
+            <input type="time" value="${escapeHtml(block.start || "12:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="start" />
+            <input type="time" value="${escapeHtml(block.end || "13:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="end" />
+            <input placeholder="Reason" value="${escapeHtml(block.reason || "")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="reason" />
+            <button class="ops-btn light" data-remove-block-time="${teamIndex}:${blockIndex}">Remove</button>
+          </div>
+        `).join("") || `<div class="empty-note">No blocked times yet.</div>`}
       </div>
     </section>
   `;
@@ -677,17 +853,141 @@ function renderServiceAreaEditor(team, teamIndex) {
   `;
 }
 
-function teamProjectPanel(title, projects) {
+function teamProjectPanel(title, projects, type = "") {
   return `
-    <section class="ops-panel">
+    <section class="ops-panel team-project-panel ${type ? `team-project-panel-${type}` : ""}">
       <div class="panel-head"><div><h2>${title}</h2><span>${projects.length} projects</span></div></div>
       <div class="team-project-list">
-        ${projects.map(project => `
-          <div class="team-project-row">
-            <strong>${project.reference}</strong>
-            <span>${project.customer.firstName} ${project.customer.lastName} · ${project.status}</span>
+        ${projects.map(teamProjectBox).join("") || `<div class="team-project-row"><span>No projects yet</span></div>`}
+      </div>
+    </section>
+  `;
+}
+
+function teamProjectBox(project) {
+  return `
+    <div class="team-project-box" data-open-team-project="${project.reference}" role="button" tabindex="0">
+      <span><strong>${escapeHtml(projectName(project))}</strong><small>${escapeHtml(project.reference)} ${teamBadge(project.team)}</small></span>
+      <span><small>Customer</small><strong>${escapeHtml(project.customer.firstName)} ${escapeHtml(project.customer.lastName)}</strong></span>
+      <span><small>Number</small><strong>${phoneCopyButton(project.customer.cell || "Not supplied")}</strong></span>
+      <span><small>Area</small><strong>${escapeHtml(project.property.suburb || project.property.city || "Not supplied")}</strong></span>
+    </div>
+  `;
+}
+
+function renderTeamCalendar(team, options = {}) {
+  const days = calendarVisibleDays();
+  const portalClass = options.portal ? "team-calendar-portal" : "";
+  return `
+    <section class="ops-panel team-calendar ${portalClass}" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
+      <div class="panel-head">
+        <div><h2>Team Calendar</h2><span>Light orange slots are open. Booked projects and blocked times occupy availability.</span></div>
+        <div class="calendar-controls">
+          <button class="${state.teamCalendarMode === "today" ? "active" : ""}" data-calendar-mode="today">Today</button>
+          <button class="${state.teamCalendarMode === "week" ? "active" : ""}" data-calendar-mode="week">This Week</button>
+          <button data-calendar-shift="-1">‹</button>
+          <button data-calendar-shift="1">›</button>
+        </div>
+      </div>
+      <div class="calendar-grid ${state.teamCalendarMode === "today" ? "today" : ""}">
+        ${days.map(date => renderCalendarDay(team, date)).join("")}
+      </div>
+      ${options.portal ? renderTeamPortalBlockManager(team, options.teamIndex) : ""}
+    </section>
+  `;
+}
+
+function renderCalendarDay(team, date) {
+  const key = dateKey(date);
+  const dayKey = calendarDays[date.getDay() - 1]?.key;
+  const availability = team.availability[dayKey] || { enabled: false, start: "", end: "" };
+  const bookings = state.projects
+    .filter(project => project.team === team.name && project.status !== "Completed")
+    .flatMap(project => bookingSegmentsForProject(team, project))
+    .filter(segment => segment.date === key)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const blocks = (team.blockedTimes || []).filter(block => block.date === key).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+  return `
+    <article class="calendar-day">
+      <div class="calendar-day-head"><strong>${dayLabel(date)}</strong><span>${key}</span></div>
+      ${availability.enabled ? `<div class="calendar-open">Open ${availability.start} - ${availability.end}</div>` : `<div class="calendar-closed">Closed</div>`}
+      <div class="calendar-items">
+        ${bookings.map(segment => calendarBooking(segment)).join("")}
+        ${blocks.map(block => calendarBlock(block)).join("")}
+        ${!bookings.length && !blocks.length ? `<span class="calendar-empty">No allocations</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function calendarBooking(segment) {
+  const { project, start, end, hours, index, total } = segment;
+  return `
+    <button class="calendar-booking" data-open-team-project="${project.reference}">
+      <strong>${escapeHtml(projectName(project))}</strong>
+      <span>${start} - ${end} · ${hours}h${total > 1 ? ` · Day ${index + 1}/${total}` : ""} · ${project.customer.firstName}</span>
+    </button>
+  `;
+}
+
+function bookingSegmentsForProject(team, project) {
+  const segments = [];
+  let remaining = projectDurationHours(project);
+  let date = parseDate(project.scheduledDate || todayKey());
+  let preferredStart = project.scheduledTime || "09:00";
+  let guard = 0;
+
+  while (remaining > 0 && guard < 14) {
+    guard += 1;
+    const dayIndex = date.getDay();
+    const day = calendarDays[dayIndex - 1];
+
+    if (day) {
+      const availability = (team.availability || {})[day.key] || defaultAvailability[day.key];
+
+      if (availability?.enabled) {
+        const start = segments.length ? availability.start : laterTime(preferredStart, availability.start);
+        const openHours = Math.max(0, timeToHours(availability.end) - timeToHours(start));
+
+        if (openHours > 0) {
+          const hours = Math.min(remaining, openHours);
+          segments.push({
+            project,
+            date: dateKey(date),
+            start,
+            end: addHours(start, hours),
+            hours,
+          });
+          remaining -= hours;
+        }
+      }
+    }
+
+    date.setDate(date.getDate() + 1);
+    preferredStart = "";
+  }
+
+  return segments.map((segment, index) => ({ ...segment, index, total: segments.length }));
+}
+
+function calendarBlock(block) {
+  return `<div class="calendar-block"><strong>Blocked</strong><span>${escapeHtml(block.start)} - ${escapeHtml(block.end)} · ${escapeHtml(block.reason || "Unavailable")}</span></div>`;
+}
+
+function renderTeamPortalBlockManager(team, teamIndex) {
+  return `
+    <section class="team-calendar-block-manager">
+      <div class="panel-head"><div><h2>Block Unavailable Time</h2><span>Add times when the team cannot accept new jobs.</span></div><button class="ops-btn light" data-add-block-time="${teamIndex}">Block Time</button></div>
+      <div class="block-time-list">
+        ${(team.blockedTimes || []).map((block, blockIndex) => `
+          <div class="block-time-row">
+            <input type="date" value="${escapeHtml(block.date || todayKey())}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="date" />
+            <input type="time" value="${escapeHtml(block.start || "12:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="start" />
+            <input type="time" value="${escapeHtml(block.end || "13:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="end" />
+            <input placeholder="Reason" value="${escapeHtml(block.reason || "")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="reason" />
+            <button class="ops-btn light" data-remove-block-time="${teamIndex}:${blockIndex}">Remove</button>
           </div>
-        `).join("") || `<div class="team-project-row"><span>No projects yet</span></div>`}
+        `).join("") || `<div class="empty-note">No blocked times yet.</div>`}
       </div>
     </section>
   `;
@@ -726,6 +1026,7 @@ function renderTeamPortal(team, index) {
         ${teamPortalProjectPanel("Upcoming Projects", planned)}
         ${teamPortalProjectPanel("Past Projects", past)}
       </section>
+      ${renderTeamCalendar(team, { portal: true, teamIndex: index })}
       <div class="toast" id="toast"></div>
     </main>
   `;
@@ -738,8 +1039,11 @@ function teamPortalProjectPanel(title, projects) {
       <div class="team-project-list">
         ${projects.map(project => `
           <div class="team-project-row">
-            <strong>${project.reference}</strong>
-            <span>${project.customer.firstName} ${project.customer.lastName} · ${fullAddress(project)} · ${project.status}</span>
+            <div>
+              <strong>${project.reference}</strong>
+              <span>${project.customer.firstName} ${project.customer.lastName} · ${fullAddress(project)} · ${project.status}${project.teamAccepted ? " · Accepted" : ""}</span>
+            </div>
+            ${project.status !== "Completed" ? `<button class="ops-btn light" data-accept-team-project="${project.reference}" ${project.teamAccepted ? "disabled" : ""}>${project.teamAccepted ? "Accepted" : "Accept Project"}</button>` : ""}
           </div>
         `).join("") || `<div class="team-project-row"><span>No projects in this section</span></div>`}
       </div>
@@ -752,10 +1056,7 @@ function renderEstimateShell() {
     <main class="request-shell">
       <section class="request-card">
         <div class="request-top">
-          <div class="ops-brand compact">
-            <div class="brand-mark">CGG</div>
-            <div><strong>City Garden Guys</strong><span>Fast estimate</span></div>
-          </div>
+          ${quoteLogo("Fast estimate")}
           <button class="ops-btn light" id="backOffice">Back Office</button>
         </div>
         ${renderEstimateStep()}
@@ -773,12 +1074,13 @@ function renderEstimateStep() {
   if (state.step === "questions") return renderQuickQuestions();
   if (state.step === "quote") return renderQuoteScreen(selectedProject());
   if (state.step === "accepted") return renderAccepted(selectedProject());
+  const quoteForm = state.settings.quoteForm;
   return `
     <div class="request-intro">
       <span class="eyebrow">Instant estimate</span>
-      <h1>Get Your Garden Clean-Up Estimate</h1>
-      <p>Upload a few photos, tell us what needs to be done, and receive your estimate fast.</p>
-      <button class="ops-btn orange large" data-step="customer">Get My Estimate</button>
+      <h1>${escapeHtml(quoteForm.title)}</h1>
+      <p>${escapeHtml(quoteForm.intro)}</p>
+      <button class="ops-btn orange large" data-step="customer">${escapeHtml(quoteForm.buttonText)}</button>
     </div>
   `;
 }
@@ -894,12 +1196,21 @@ function renderAccepted(project) {
   `;
 }
 
+function quoteLogo(label) {
+  return `
+    <div class="quote-logo-lockup">
+      <img src="assets/CGG_Quote_Logo.png" alt="City Garden Guys" />
+      <span>${escapeHtml(label)}</span>
+    </div>
+  `;
+}
+
 function renderPublicProject(project) {
   const verified = project.status === "Quote Verified";
   return `
     <main class="public-shell">
       <section class="public-header">
-        <div class="ops-brand compact"><div class="brand-mark">CGG</div><div><strong>City Garden Guys</strong><span>Project Portal</span></div></div>
+        ${quoteLogo("Project Portal")}
         <span class="status-pill">${project.status}</span>
       </section>
       <section class="public-grid">
@@ -971,6 +1282,19 @@ function bindOffice() {
     state.selectedRef = button.dataset.selectProject;
     render();
   }));
+  document.querySelectorAll("[data-open-notification]").forEach(button => button.addEventListener("click", () => {
+    state.selectedRef = button.dataset.openNotification;
+    state.officeTab = "overview";
+    render();
+  }));
+  document.querySelectorAll("[data-handle-notification]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.handleNotification);
+    if (project && ["Request Submitted", "Estimate Generated"].includes(project.status)) project.status = "Awaiting Verification";
+    state.selectedRef = button.dataset.handleNotification;
+    state.officeTab = "pipeline";
+    saveAll();
+    render();
+  }));
   document.getElementById("projectSearch")?.addEventListener("input", event => {
     state.search = event.target.value;
     render();
@@ -994,6 +1318,21 @@ function bindOffice() {
     field.addEventListener("input", updatePricingFlatField);
     field.addEventListener("change", updatePricingFlatField);
   });
+  document.querySelectorAll("[data-form-link-index][data-form-link-field]").forEach(field => {
+    field.addEventListener("input", updateFormLinkField);
+    field.addEventListener("change", updateFormLinkField);
+  });
+  document.querySelectorAll("[data-add-form-link]").forEach(button => button.addEventListener("click", () => {
+    state.settings.quoteForm.links.push({ name: "New Source Link", source: `source-${state.settings.quoteForm.links.length + 1}` });
+    render();
+  }));
+  document.querySelectorAll("[data-remove-form-link]").forEach(button => button.addEventListener("click", () => {
+    state.settings.quoteForm.links.splice(Number(button.dataset.removeFormLink), 1);
+    render();
+  }));
+  document.querySelectorAll("[data-copy-form-link]").forEach(button => button.addEventListener("click", () => {
+    copyText(toAbsoluteUrl(button.dataset.copyFormLink), "Form link copied.");
+  }));
   document.getElementById("saveSettings")?.addEventListener("click", () => {
     saveSettings();
     state.editingSettings = null;
@@ -1022,6 +1361,8 @@ function bindOffice() {
     field.addEventListener("input", updateTeamMemberField);
     field.addEventListener("change", updateTeamMemberField);
   });
+  bindAvailabilityControls();
+  bindBlockTimeControls();
   document.querySelectorAll("[data-add-member]").forEach(button => button.addEventListener("click", () => {
     state.serviceTeams[Number(button.dataset.addMember)].membersList.push({ name: "", surname: "", cell: "" });
     render();
@@ -1085,6 +1426,17 @@ function bindOffice() {
     copyTeamLink(button.dataset.copyTeamLink);
   }));
   bindCopyActions();
+  document.querySelectorAll("[data-open-team-project]").forEach(box => {
+    box.addEventListener("click", event => {
+      if (event.target.closest("[data-copy-phone]")) return;
+      openTeamProject(box.dataset.openTeamProject);
+    });
+    box.addEventListener("keydown", event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openTeamProject(box.dataset.openTeamProject);
+    });
+  });
   document.querySelectorAll("[data-edit-team]").forEach(button => button.addEventListener("click", () => {
     state.editingTeamIndex = Number(button.dataset.editTeam);
     render();
@@ -1094,9 +1446,7 @@ function bindOffice() {
     state.editingTeamIndex = null;
     render();
   }));
-  document.querySelectorAll("[data-calendar-manager]").forEach(button => button.addEventListener("click", () => {
-    showToast("Calendar manager coming next: allocate job time slots.");
-  }));
+  bindCalendarControls();
   document.querySelectorAll("[data-report-manager]").forEach(button => button.addEventListener("click", () => {
     showToast("Reports coming next: week and month team views.");
   }));
@@ -1188,6 +1538,63 @@ function bindPublicProject(project) {
   }));
 }
 
+function bindTeamPortal(teamIndex) {
+  bindCopyActions();
+  bindCalendarControls();
+  bindBlockTimeControls();
+  document.querySelectorAll("[data-accept-team-project]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.acceptTeamProject);
+    if (!project) return;
+    project.teamAccepted = true;
+    if (project.status === "Scheduled") project.status = "Team Assigned";
+    saveAll();
+    showToast("Project accepted.");
+    render();
+  }));
+}
+
+function bindAvailabilityControls() {
+  document.querySelectorAll("[data-availability-day][data-availability-field]").forEach(field => {
+    field.addEventListener("input", updateAvailabilityField);
+    field.addEventListener("change", updateAvailabilityField);
+  });
+}
+
+function bindBlockTimeControls() {
+  document.querySelectorAll("[data-block-index][data-block-field]").forEach(field => {
+    field.addEventListener("input", updateBlockedTimeField);
+    field.addEventListener("change", updateBlockedTimeField);
+  });
+  document.querySelectorAll("[data-add-block-time]").forEach(button => button.addEventListener("click", () => {
+    state.serviceTeams[Number(button.dataset.addBlockTime)].blockedTimes.push({ date: todayKey(), start: "12:00", end: "13:00", reason: "Unavailable" });
+    saveServiceTeams();
+    render();
+  }));
+  document.querySelectorAll("[data-remove-block-time]").forEach(button => button.addEventListener("click", () => {
+    const [teamIndex, blockIndex] = button.dataset.removeBlockTime.split(":").map(Number);
+    state.serviceTeams[teamIndex].blockedTimes.splice(blockIndex, 1);
+    saveServiceTeams();
+    render();
+  }));
+}
+
+function bindCalendarControls() {
+  document.querySelectorAll("[data-calendar-mode]").forEach(button => button.addEventListener("click", () => {
+    state.teamCalendarMode = button.dataset.calendarMode;
+    if (state.teamCalendarMode === "today") state.teamCalendarStart = todayKey();
+    else state.teamCalendarStart = weekStartKey(parseDate(state.teamCalendarStart));
+    render();
+  }));
+  document.querySelectorAll("[data-calendar-shift]").forEach(button => button.addEventListener("click", () => {
+    const shift = Number(button.dataset.calendarShift);
+    const base = parseDate(state.teamCalendarStart);
+    base.setDate(base.getDate() + shift * 7);
+    state.teamCalendarStart = weekStartKey(base);
+    state.teamCalendarMode = "week";
+    render();
+  }));
+}
+
 function bindCopyActions() {
   document.querySelectorAll("[data-copy-phone]").forEach(button => button.addEventListener("click", () => copyPhoneNumber(button.dataset.copyPhone)));
 }
@@ -1219,6 +1626,11 @@ function updatePricingFlatField(event) {
   state.settings.pricing[event.target.dataset.priceField] = Number(event.target.value || 0);
 }
 
+function updateFormLinkField(event) {
+  const link = state.settings.quoteForm.links[Number(event.target.dataset.formLinkIndex)];
+  link[event.target.dataset.formLinkField] = event.target.value;
+}
+
 function updateTeamField(event) {
   const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
   const field = event.target.dataset.teamField;
@@ -1238,13 +1650,25 @@ function updateTeamMemberField(event) {
   syncTeamMembers(team);
 }
 
+function updateAvailabilityField(event) {
+  const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
+  const day = event.target.dataset.availabilityDay;
+  const field = event.target.dataset.availabilityField;
+  team.availability[day] = team.availability[day] || { ...defaultAvailability[day] };
+  team.availability[day][field] = field === "enabled" ? event.target.checked : event.target.value;
+  saveServiceTeams();
+}
+
+function updateBlockedTimeField(event) {
+  const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
+  const block = team.blockedTimes[Number(event.target.dataset.blockIndex)];
+  block[event.target.dataset.blockField] = event.target.value;
+  saveServiceTeams();
+}
+
 function copyTeamLink(path) {
   const url = toAbsoluteUrl(path);
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(url).then(() => showToast("Team owner link copied."), () => showToast(url));
-    return;
-  }
-  showToast(url);
+  copyText(url, "Team owner link copied.");
 }
 
 function copyPhoneNumber(number) {
@@ -1258,6 +1682,22 @@ function copyPhoneNumber(number) {
     return;
   }
   showToast(value);
+}
+
+function copyText(value, message) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value).then(() => showToast(message), () => showToast(value));
+    return;
+  }
+  showToast(value);
+}
+
+function openTeamProject(reference) {
+  state.selectedRef = reference;
+  state.officeTab = "overview";
+  state.selectedTeamIndex = null;
+  state.editingTeamIndex = null;
+  render();
 }
 
 function syncTeamMembers(team) {
@@ -1293,6 +1733,8 @@ function createProjectFromForm() {
     })),
     team: "Unassigned",
     scheduledDate: "",
+    scheduledTime: "09:00",
+    source: estimateSource(),
     createdAt: new Date().toISOString(),
   };
 }
@@ -1355,16 +1797,19 @@ function seedProject(reference, firstName, lastName, suburb, status, price, time
     areas: [{ name: "Back Garden", notes: "Clear branches and remove green waste.", photos: [placeholderPhoto("Back Garden")] }],
     team: defaultTeamOptions()[Math.floor(Math.random() * defaultTeamOptions().length)] || "Unassigned",
     scheduledDate: "2026-06-26",
+    scheduledTime: "09:00",
     createdAt: new Date().toISOString(),
   };
 }
 
 function officeTab(tab, label) {
-  return `<button class="${state.officeTab === tab ? "active" : ""}" data-office-tab="${tab}"><span class="nav-icon">${navIcon(tab)}</span>${label}</button>`;
+  const alert = tab === "notifications" && newRequestCount() > 0;
+  return `<button class="${state.officeTab === tab ? "active" : ""}" data-office-tab="${tab}"><span class="nav-icon ${tab === "notifications" ? "bell-icon" : ""} ${alert ? "has-alert" : ""}">${navIcon(tab)}</span>${label}</button>`;
 }
 
 function navIcon(tab) {
   return {
+    notifications: bellIcon(),
     overview: "⌂",
     pipeline: "▦",
     quote: "R",
@@ -1374,6 +1819,10 @@ function navIcon(tab) {
   }[tab] || "•";
 }
 
+function bellIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>`;
+}
+
 function metric(label, value) {
   return `<div class="ops-metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
@@ -1381,7 +1830,7 @@ function metric(label, value) {
 function queueRow(project) {
   return `
     <button class="queue-row ${state.selectedRef === project.reference ? "active" : ""}" data-select-project="${project.reference}">
-      <span><strong>${project.reference}</strong><small>${project.customer.firstName} ${project.customer.lastName} · ${project.property.suburb}</small></span>
+      <span><strong>${project.reference}</strong><small>${project.customer.firstName} ${project.customer.lastName} · ${project.property.suburb} ${teamBadge(project.team)}</small></span>
       <em>${project.status}</em>
     </button>
   `;
@@ -1428,6 +1877,13 @@ function formInput(field, label, value, group, type = "text") {
 function dataItem(label, value) {
   const display = label === "Cell" ? phoneCopyButton(value || "Not supplied") : escapeHtml(String(value || "Not supplied"));
   return `<div class="data-item"><span>${label}</span><strong>${display}</strong></div>`;
+}
+
+function teamBadge(teamName) {
+  if (!teamName || teamName === "Unassigned") return `<span class="team-badge muted"><span></span>Unassigned</span>`;
+  const team = state.serviceTeams.find(item => item.name === teamName);
+  const color = team?.color || teamColorOptions[0].value;
+  return `<span class="team-badge" style="--team-color: ${escapeHtml(color)}"><span></span>${escapeHtml(teamName)}</span>`;
 }
 
 function settingLine(label, value) {
@@ -1477,6 +1933,10 @@ function areaTile(area) {
   return `<article class="area-tile"><strong>${escapeHtml(area.name)}</strong><p>${escapeHtml(area.notes)}</p><div class="thumb-row">${area.photos.map(photo => `<img src="${photo.src}" alt="${escapeHtml(photo.name)}" />`).join("")}</div></article>`;
 }
 
+function projectName(project) {
+  return project.selectedServices?.[0] || project.areas?.[0]?.name || project.reference;
+}
+
 function publicSection(title, rows) {
   return `<h2>${title}</h2><div class="data-grid">${rows.map(row => dataItem(row[0], row[1])).join("")}</div>`;
 }
@@ -1512,16 +1972,120 @@ function projectsByStatus(list) {
 
 function teamProjects(teamName, type) {
   const projects = state.projects.filter(project => project.team === teamName);
-  const planned = ["Quote Accepted", "Scheduled", "Team Assigned"];
-  const current = ["Team On Route", "In Progress"];
+  const today = todayKey();
   if (type === "past") return projects.filter(project => project.status === "Completed");
-  if (type === "planned") return projects.filter(project => planned.includes(project.status));
-  if (type === "current") return projects.filter(project => current.includes(project.status));
+  if (type === "today") return projects.filter(project => dateKey(project.scheduledDate) === today).sort(sortBySchedule);
+  if (type === "upcoming") return projects.filter(project => project.status !== "Completed" && dateKey(project.scheduledDate) > today).sort(sortBySchedule);
+  if (type === "planned") return projects.filter(project => project.status !== "Completed" && dateKey(project.scheduledDate) >= today).sort(sortBySchedule);
+  if (type === "current") return projects.filter(project => dateKey(project.scheduledDate) === today).sort(sortBySchedule);
   return projects;
+}
+
+function sortBySchedule(a, b) {
+  return dateKey(a.scheduledDate).localeCompare(dateKey(b.scheduledDate)) || String(a.scheduledTime || "").localeCompare(String(b.scheduledTime || "")) || a.reference.localeCompare(b.reference);
+}
+
+function dateKey(value) {
+  if (value instanceof Date) {
+    const offset = value.getTimezoneOffset();
+    return new Date(value.getTime() - offset * 60000).toISOString().slice(0, 10);
+  }
+  return String(value || "9999-12-31").slice(0, 10);
+}
+
+function todayKey() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+}
+
+function parseDate(value) {
+  const date = value instanceof Date ? new Date(value) : new Date(`${dateKey(value)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function weekStartKey(value) {
+  const date = parseDate(value || new Date());
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return dateKey(date);
+}
+
+function calendarVisibleDays() {
+  if (state.teamCalendarMode === "today") return [parseDate(todayKey())];
+  const start = parseDate(state.teamCalendarStart || weekStartKey(new Date()));
+  return calendarDays.map((_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function dayLabel(date) {
+  return `${calendarDays[date.getDay() - 1]?.short || ""} ${date.getDate()}`;
+}
+
+function projectDurationHours(project) {
+  return { T1: 2, T2: 4, T3: 8, T4: 16 }[project.rating?.time] || 2;
+}
+
+function addHours(time, hours) {
+  const [hour, minute] = String(time || "09:00").split(":").map(Number);
+  const total = hour * 60 + (minute || 0) + Math.round(hours * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function timeToHours(time) {
+  const [hour, minute] = String(time || "00:00").split(":").map(Number);
+  return (hour || 0) + (minute || 0) / 60;
+}
+
+function laterTime(first, second) {
+  if (!first) return second || "08:00";
+  if (!second) return first;
+  return timeToHours(first) > timeToHours(second) ? first : second;
 }
 
 function countStatus(status) {
   return state.projects.filter(project => project.status === status).length;
+}
+
+function projectNotifications() {
+  return state.projects
+    .filter(project => ["Request Submitted", "Estimate Generated"].includes(project.status))
+    .map(project => ({
+      kind: "project",
+      type: "New Project",
+      reference: project.reference,
+      title: `${projectName(project)} - ${project.reference}`,
+      detail: `${project.customer.firstName} ${project.customer.lastName} submitted a clean-up request for ${project.property.suburb || project.property.city || "their property"}.`,
+      meta: `${project.status} · ${money(project.price)}`,
+    }));
+}
+
+function teamMovementNotifications() {
+  return state.projects
+    .filter(project => ["Scheduled", "Team Assigned", "Team On Route", "In Progress"].includes(project.status))
+    .slice()
+    .sort(sortBySchedule)
+    .map(project => ({
+      kind: "team",
+      type: "Team Update",
+      reference: project.reference,
+      team: project.team || "Unassigned",
+      title: `${project.team || "Unassigned"} · ${project.status}`,
+      detail: `${projectName(project)} for ${project.customer.firstName} ${project.customer.lastName} in ${project.property.suburb || project.property.city || "area pending"}.`,
+      meta: `${project.scheduledDate || "No date set"} · ${project.reference}`,
+    }));
+}
+
+function notificationCount() {
+  return projectNotifications().length + teamMovementNotifications().length;
+}
+
+function newRequestCount() {
+  return projectNotifications().length;
 }
 
 function getProjectFromPath() {
@@ -1548,6 +2112,10 @@ function teamShareUrl(team) {
 
 function toAbsoluteUrl(path) {
   return `${window.location.origin}${path}`;
+}
+
+function estimateSource() {
+  return new URLSearchParams(window.location.search).get("source") || state.settings.quoteForm.defaultSource || "Internal";
 }
 
 function formattedTeamMembers(team) {
@@ -1600,6 +2168,11 @@ function mergeSettings(saved) {
       waste: { ...defaultSettings.pricing.waste, ...((saved.pricing || {}).waste || {}) },
       complexity: { ...defaultSettings.pricing.complexity, ...((saved.pricing || {}).complexity || {}) },
     },
+    quoteForm: {
+      ...defaultSettings.quoteForm,
+      ...(saved.quoteForm || {}),
+      links: (saved.quoteForm || {}).links || defaultSettings.quoteForm.links,
+    },
   };
 }
 
@@ -1623,6 +2196,7 @@ function normalizeTeam(team) {
     name: team.name || "New Team",
     mainMember: team.mainMember || "",
     ownerContact: team.ownerContact || "",
+    color: team.color || teamColorOptions[0].value,
     members: team.members || "",
     membersList,
     serviceAbility: team.serviceAbility || "",
@@ -1632,7 +2206,13 @@ function normalizeTeam(team) {
     areaCity: team.areaCity || Object.keys(southAfricanAreas)[0],
     areaNeighborhood: team.areaNeighborhood || southAfricanAreas[team.areaCity || Object.keys(southAfricanAreas)[0]][0],
     customArea: team.customArea || "",
+    availability: mergeAvailability(team.availability),
+    blockedTimes: team.blockedTimes || [],
   };
+}
+
+function mergeAvailability(saved = {}) {
+  return Object.fromEntries(calendarDays.map(day => [day.key, { ...defaultAvailability[day.key], ...(saved[day.key] || {}) }]));
 }
 
 function saveServiceTeams() {
@@ -1694,6 +2274,7 @@ function blankTeam() {
     name: "New Team",
     mainMember: "",
     ownerContact: "",
+    color: teamColorOptions[state.serviceTeams.length % teamColorOptions.length].value,
     members: "",
     membersList: [],
     serviceAbility: "",
@@ -1703,6 +2284,8 @@ function blankTeam() {
     areaCity: "Cape Town",
     areaNeighborhood: "Durbanville",
     customArea: "",
+    availability: mergeAvailability(),
+    blockedTimes: [],
   };
 }
 
