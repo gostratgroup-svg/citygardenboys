@@ -9,12 +9,21 @@ const services = [
 ];
 
 const teamColorOptions = [
-  { name: "Blue", value: "#2563EB" },
-  { name: "Purple", value: "#7C3AED" },
-  { name: "Pink", value: "#DB2777" },
-  { name: "Red", value: "#DC2626" },
-  { name: "Slate", value: "#475569" },
+  { name: "Royal Blue", value: "#2563EB" },
+  { name: "Sky Blue", value: "#0284C7" },
+  { name: "Ocean", value: "#0369A1" },
   { name: "Cyan", value: "#0891B2" },
+  { name: "Indigo", value: "#4F46E5" },
+  { name: "Violet", value: "#7C3AED" },
+  { name: "Purple", value: "#9333EA" },
+  { name: "Fuchsia", value: "#C026D3" },
+  { name: "Magenta", value: "#DB2777" },
+  { name: "Rose Pink", value: "#BE185D" },
+  { name: "Plum", value: "#86198F" },
+  { name: "Navy", value: "#1E3A8A" },
+  { name: "Steel", value: "#475569" },
+  { name: "Charcoal", value: "#334155" },
+  { name: "Graphite", value: "#3F3F46" },
 ];
 
 const calendarDays = [
@@ -62,7 +71,19 @@ const statuses = [
   "Team Assigned",
   "Team On Route",
   "In Progress",
+  "Project Review",
   "Completed",
+  "Cancelled",
+];
+
+const pipelineStages = [
+  { key: "verification", label: "Verification", note: "Request, photos, variables and verification decision." },
+  { key: "quote", label: "Quote Verified", note: "Customer or back office must accept the quote." },
+  { key: "allocation", label: "Team Allocation", note: "Accepted quote waiting for a team and timeslot." },
+  { key: "upcoming", label: "Upcoming Projects", note: "Allocated to a team and visible on the Team Link." },
+  { key: "review", label: "Project Review", note: "Completed by team, awaiting quality review and feedback." },
+  { key: "completed", label: "Completed Projects", note: "All steps are complete." },
+  { key: "cancelled", label: "Cancel Projects", note: "Cancelled quotes and projects." },
 ];
 
 const defaultServiceTeams = [
@@ -99,6 +120,10 @@ const defaultServiceTeams = [
 ];
 
 const defaultSettings = {
+  services: [...services],
+  serviceLocations: {
+    "Cape Town": ["Durbanville", "Bellville", "Table View", "Claremont", "Rondebosch", "Newlands", "Somerset West", "Stellenbosch"],
+  },
   banking: {
     accountName: "City Garden Co",
     bankName: "First National Bank",
@@ -109,7 +134,7 @@ const defaultSettings = {
   pricing: {
     time: { T1: 450, T2: 650, T3: 1150, T4: 2200 },
     load: { L1: 0, L2: 150, L3: 450, L4: 850 },
-    waste: { W1: 120, W2: 280, W3: 520, W4: 900 },
+    waste: { W0: 0, W1: 120, W2: 220, W3: 350, W4: 550, W5: 220 },
     complexity: { A: 0, B: 150, C: 350, D: 650 },
     urgentAsap: 250,
     extraArea: 180,
@@ -142,6 +167,7 @@ const state = {
   mode: "office",
   officeTab: "overview",
   selectedRef: "CGG-2026-00124",
+  pipelineStage: "verification",
   search: "",
   step: "start",
   projects: loadProjects(),
@@ -154,6 +180,12 @@ const state = {
   editingTeamIndex: null,
   teamCalendarMode: "week",
   teamCalendarStart: weekStartKey(new Date()),
+  calendarBlockMode: false,
+  calendarBlockDate: null,
+  calendarBlockForm: blankCalendarBlock(),
+  teamPortalProjectRef: null,
+  assigningProjectRef: null,
+  areaUnavailable: false,
   mobileMenuOpen: false,
   form: blankForm(),
 };
@@ -193,6 +225,7 @@ function renderBackOffice() {
   const settingsOnly = state.officeTab === "settings";
   const teamsOnly = state.officeTab === "teams";
   const notificationsOnly = state.officeTab === "notifications";
+  const pipelineOnly = state.officeTab === "pipeline";
   return `
     <main class="ops-shell ${state.mobileMenuOpen ? "menu-open" : ""}">
       <button type="button" class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open management menu" aria-expanded="${state.mobileMenuOpen ? "true" : "false"}">
@@ -254,29 +287,30 @@ function renderBackOffice() {
         ` : `
         <header class="ops-topbar">
           <div>
-            <h1>Project Control</h1>
-            <p>Manage quote, status, team, portal visibility and next actions from one workspace.</p>
+            <h1>${pipelineOnly ? "Pipeline" : "Project Control"}</h1>
+            <p>${pipelineOnly ? "Move each request through the major CGG workflow stages." : "Manage quote, status, team, portal visibility and next actions from one workspace."}</p>
           </div>
           <div class="ops-actions">
             <button class="ops-btn" id="saveProject">Save Changes</button>
             <button class="ops-btn orange" data-open-project="${project.reference}">Open Portal</button>
           </div>
         </header>
-        <section class="ops-metrics">
+        ${pipelineOnly ? "" : `<section class="ops-metrics">
           ${metric("Open", projectsByStatus(["Request Submitted", "Estimate Generated", "Awaiting Verification", "More Photos Requested", "Site Visit Requested", "Quote Verified", "Quote Accepted", "Scheduled", "Team Assigned", "Team On Route", "In Progress"]).length)}
           ${metric("Needs Verify", countStatus("Awaiting Verification") + countStatus("Estimate Generated"))}
           ${metric("Accepted", countStatus("Quote Accepted") + countStatus("Scheduled"))}
           ${metric("In Progress", countStatus("In Progress"))}
           ${metric("Revenue", money(state.projects.reduce((sum, item) => sum + Number(item.price || 0), 0)))}
-        </section>
+        </section>`}
         <section class="ops-workspace">
           <div class="ops-panel project-queue">
             <div class="panel-head">
-              <div><h2>Project Queue</h2><span>${filteredProjects().length} visible projects</span></div>
+              <div><h2>${pipelineOnly ? "Pipeline Stages" : "Project Queue"}</h2><span>${pipelineProjects().length} visible projects</span></div>
             </div>
+            ${pipelineOnly ? renderPipelineStageTabs() : ""}
             <input class="ops-search" id="projectSearch" placeholder="Search customer, suburb, reference" value="${escapeHtml(state.search)}" />
             <div class="queue-list">
-              ${filteredProjects().map(queueRow).join("")}
+              ${pipelineProjects().map(queueRow).join("") || `<div class="empty-note">No projects in this stage.</div>`}
             </div>
           </div>
           <div class="ops-detail">
@@ -286,7 +320,21 @@ function renderBackOffice() {
         `}
       </section>
     </main>
+    ${state.areaUnavailable ? renderAreaUnavailableModal() : ""}
+    ${state.assigningProjectRef ? renderAssignTeamModal(state.projects.find(project => project.reference === state.assigningProjectRef) || project) : ""}
     <div class="toast" id="toast"></div>
+  `;
+}
+
+function renderAreaUnavailableModal() {
+  return `
+    <div class="modal open">
+      <section class="modal-panel ops-panel">
+        <div class="panel-head"><div><h2>Area Not Available Yet</h2><span>City Garden Guys does not currently service this area.</span></div></div>
+        <p class="hint">We are not active in ${escapeHtml(state.form.property.city || "this city")} ${state.form.property.suburb ? `, ${escapeHtml(state.form.property.suburb)}` : ""} yet. You can adjust the city or contact us to confirm availability.</p>
+        <div class="button-row"><button class="ops-btn orange" data-close-area-unavailable>Choose Another Area</button></div>
+      </section>
+    </div>
   `;
 }
 
@@ -385,26 +433,143 @@ function renderOverviewControl(project) {
 }
 
 function renderPipelineControl(project) {
+  const activeStage = pipelineStageForProject(project);
   return `
     <section class="ops-panel">
-      <div class="record-head">
-        <div><span class="eyebrow">Pipeline</span><h2>${project.reference}</h2><p>Move the project forward without losing visibility.</p></div>
-        <span class="status-pill">${project.status}</span>
+      <div class="record-head pipeline-record-head">
+        <div>
+          <span class="eyebrow">${project.reference}</span>
+          <h2>${escapeHtml(project.customer.firstName)} ${escapeHtml(project.customer.lastName)}</h2>
+          <p>${escapeHtml(fullAddress(project))}</p>
+        </div>
+        <div class="pipeline-status-card">
+          <span>Status</span>
+          <strong>${escapeHtml(project.status)}</strong>
+          <small>${pipelineStages.find(stage => stage.key === activeStage)?.label || "Pipeline"}</small>
+        </div>
       </div>
-      <div class="compact-pipeline">
-        ${statuses.map((status, index) => {
-          const current = statuses.indexOf(project.status);
-          return `<button class="pipe-step ${index < current ? "done" : index === current ? "active" : ""}" data-set-status="${status}">
-            <span>${index + 1}</span>${status}
-          </button>`;
-        }).join("")}
+      <div class="data-grid">
+        ${dataItem("Cell", project.customer.cell || "Not supplied")}
+        ${dataItem("Email", project.customer.email || "Not supplied")}
+        ${dataItem("Service", project.selectedServices.join(", ") || "Not Sure")}
+        ${dataItem("Quote", money(project.price))}
+        ${dataItem("Uploaded Areas", project.areas.length)}
+        ${dataItem("Photos", project.areas.reduce((sum, area) => sum + area.photos.length, 0))}
       </div>
     </section>
+    ${renderPipelineStagePanel(project, activeStage)}
     <section class="ops-panel">
       <div class="panel-head"><div><h2>Manager Notes</h2><span>Visible internally only</span></div></div>
       <textarea class="ops-notes" data-project-field="managerNotes" placeholder="Add scheduling, access or quality notes.">${escapeHtml(project.managerNotes || "")}</textarea>
     </section>
   `;
+}
+
+function renderPipelineStagePanel(project, stage) {
+  if (stage === "verification") return renderVerificationStage(project);
+  if (stage === "quote") return renderQuoteVerifiedStage(project);
+  if (stage === "allocation") return renderTeamAllocationStage(project);
+  if (stage === "upcoming") return renderUpcomingStage(project);
+  if (stage === "review") return renderProjectReviewStage(project);
+  if (stage === "completed") return renderCompletedStage(project);
+  return renderCancelledStage(project);
+}
+
+function renderVerificationStage(project) {
+  return `
+    <section class="ops-panel">
+      <div class="panel-head"><div><h2>Verification</h2><span>Review the request, photos and quote variables before verifying.</span></div></div>
+      <div class="control-grid">
+        ${inputControl("Estimated Price", "price", project.price, "number")}
+        ${selectControl("Time Rating", "time", ["T1", "T2", "T3", "T4"], project.rating.time)}
+        ${selectControl("Load Rating", "load", ["L1", "L2", "L3", "L4"], project.rating.load)}
+        ${selectControl("X Rating", "complexity", ["A", "B", "C", "D"], project.rating.complexity)}
+      </div>
+      <div class="data-grid verification-grid">
+        ${dataItem("Service Type", project.selectedServices.join(", ") || "Not Sure")}
+        ${dataItem("Address", fullAddress(project))}
+        ${dataItem("Uploaded Areas", project.areas.length)}
+        ${dataItem("Photos", project.areas.reduce((sum, area) => sum + area.photos.length, 0))}
+      </div>
+      <div class="area-strip">${project.areas.map(areaTile).join("")}</div>
+      <textarea class="ops-notes" data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "")}</textarea>
+      <div class="button-row">
+        <button class="ops-btn light" data-set-status="More Photos Requested">More Photos</button>
+        <button class="ops-btn light" data-set-status="Site Visit Requested">Site Visit Requested</button>
+        <button class="ops-btn orange" data-set-status="Quote Verified">Verify Quote</button>
+        <button class="ops-btn light" data-set-status="Cancelled">Cancel Quote</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderQuoteVerifiedStage(project) {
+  return `
+    <section class="ops-panel">
+      <div class="panel-head"><div><h2>Quote Verified</h2><span>The quote is now with the customer for acceptance and payment.</span></div><button class="ops-btn orange" data-open-project="${project.reference}">Open Customer Quote</button></div>
+      <div class="data-grid">
+        ${dataItem("Quote Amount", money(project.price))}
+        ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
+        ${dataItem("Cell", project.customer.cell || "Not supplied")}
+        ${dataItem("Status", project.status)}
+      </div>
+      <div class="button-row">
+        <button class="ops-btn orange" data-set-status="Quote Accepted">Accept Quote</button>
+        <button class="ops-btn light" data-set-status="Cancelled">Cancel Quote</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderTeamAllocationStage(project) {
+  return `
+    <section class="ops-panel">
+      <div class="panel-head"><div><h2>Team Allocation</h2><span>Quote accepted. Allocate this project to a team timeslot.</span></div><button class="ops-btn orange" data-open-assign-team="${project.reference}">Allocate To Team</button></div>
+      <div class="data-grid">
+        ${dataItem("Project Created", project.projectCreated ? "Yes" : "Pending")}
+        ${dataItem("Team", project.team || "Unassigned")}
+        ${dataItem("Date", project.scheduledDate || "Not allocated")}
+        ${dataItem("Time", project.scheduledTime || "Not allocated")}
+      </div>
+    </section>
+  `;
+}
+
+function renderUpcomingStage(project) {
+  return `
+    <section class="ops-panel">
+      <div class="panel-head"><div><h2>Upcoming Project</h2><span>Allocated to a team and visible on their Team Link.</span></div></div>
+      <div class="data-grid">
+        ${dataItem("Team", project.team || "Unassigned")}
+        ${dataItem("Scheduled", `${project.scheduledDate || "No date"} ${project.scheduledTime || ""}`)}
+        ${dataItem("Team Decision", project.teamDecision || "Pending")}
+        ${dataItem("Team Note", project.teamDecisionNote || "None")}
+      </div>
+      <div class="button-row">
+        <button class="ops-btn light" data-open-assign-team="${project.reference}">Move Allocation</button>
+        <button class="ops-btn orange" data-set-status="Project Review">Send To Review</button>
+        <button class="ops-btn light" data-set-status="Cancelled">Cancel Project</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderProjectReviewStage(project) {
+  return `
+    <section class="ops-panel">
+      <div class="panel-head"><div><h2>Project Review</h2><span>Service team has completed the work. Review quality and collect customer feedback.</span></div></div>
+      <textarea class="ops-notes" data-project-field="reviewNotes" placeholder="Completion summary, customer feedback and internal review notes.">${escapeHtml(project.reviewNotes || "")}</textarea>
+      <div class="button-row"><button class="ops-btn orange" data-set-status="Completed">Complete Project</button><button class="ops-btn light" data-set-status="Cancelled">Cancel Project</button></div>
+    </section>
+  `;
+}
+
+function renderCompletedStage(project) {
+  return `<section class="ops-panel"><div class="panel-head"><div><h2>Completed Projects</h2><span>All steps have been completed.</span></div></div><div class="data-grid">${dataItem("Completed", project.completedAt || "Completed")}${dataItem("Final Status", project.status)}</div></section>`;
+}
+
+function renderCancelledStage(project) {
+  return `<section class="ops-panel"><div class="panel-head"><div><h2>Cancel Projects</h2><span>This quote or project has been cancelled.</span></div></div><div class="data-grid">${dataItem("Cancelled", project.cancelledAt || "Cancelled")}${dataItem("Final Status", project.status)}</div></section>`;
 }
 
 function renderQuoteControl(project) {
@@ -428,13 +593,58 @@ function renderQuoteControl(project) {
       </div>
       <textarea class="ops-notes" data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "Estimate includes labour, loading, clean-up and green waste removal.")}</textarea>
       <div class="button-row">
-        <button class="ops-btn" data-set-status="Awaiting Verification">Awaiting Verification</button>
-        <button class="ops-btn orange" data-set-status="Quote Verified">Verify Estimate</button>
-        <button class="ops-btn light" data-action="Estimate adjusted">Adjust Estimate</button>
-        <button class="ops-btn light" data-set-status="More Photos Requested">Request More Photos</button>
-        <button class="ops-btn light" data-set-status="Site Visit Requested">Request Site Visit</button>
+        <button class="ops-btn light" data-set-status="More Photos Requested">More Photos</button>
+        <button class="ops-btn light" data-set-status="Site Visit Requested">Site Visit Requested</button>
+        <button class="ops-btn orange" data-set-status="Quote Verified">Quote Verified</button>
       </div>
     </section>
+  `;
+}
+
+function renderAssignTeamModal(project) {
+  const days = calendarVisibleDays();
+  return `
+    <div class="calendar-block-overlay">
+      <section class="assign-team-modal ops-panel">
+        <div class="panel-head">
+          <div><h2>Assign Team</h2><span>${escapeHtml(project.reference)} · ${projectDurationHours(project)} hour allocation required</span></div>
+          <button class="ops-btn light" data-close-assign-team>Close</button>
+        </div>
+        <div class="assign-team-grid">
+          ${state.serviceTeams.map((team, teamIndex) => `
+            <article class="assign-team-card" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
+              <div class="panel-head compact-head"><div><h2>${escapeHtml(team.name)}</h2><span>${escapeHtml(team.mainMember || "No owner")} · ${escapeHtml(team.ownerContact || "No number")}</span></div></div>
+              <div class="assign-days">
+                ${days.map(date => renderAssignDay(team, teamIndex, date, project)).join("")}
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderAssignDay(team, teamIndex, date, project) {
+  const key = dateKey(date);
+  const dayKey = calendarDays[date.getDay() - 1]?.key;
+  const availability = team.availability?.[dayKey] || defaultAvailability[dayKey];
+  const slot = availability?.enabled ? firstAvailableSlot(team, date, project) : null;
+  const segments = state.projects
+    .filter(item => item.team === team.name && item.reference !== project.reference && item.status !== "Completed")
+    .flatMap(item => bookingSegmentsForProject(team, item))
+    .filter(segment => segment.date === key);
+  const blocks = (team.blockedTimes || []).filter(block => block.date === key);
+  return `
+    <div class="assign-day">
+      <div class="assign-day-head"><strong>${dayLabel(date)}</strong><span>${key}</span></div>
+      ${availability?.enabled ? `<small>Open ${availability.start} - ${availability.end}</small>` : `<small>Closed</small>`}
+      <div class="assign-busy-list">
+        ${segments.map(segment => `<span class="busy project">${escapeHtml(segment.start)}-${escapeHtml(segment.end)} ${escapeHtml(projectName(segment.project))}</span>`).join("")}
+        ${blocks.map(block => `<span class="busy block">${escapeHtml(block.start)}-${escapeHtml(block.end)} Blocked</span>`).join("")}
+      </div>
+      ${slot ? `<button class="ops-btn light" data-assign-project-slot="${teamIndex}|${key}|${slot.start}">Allocate ${slot.start}</button>` : `<em>No fitting slot</em>`}
+    </div>
   `;
 }
 
@@ -476,6 +686,7 @@ function renderSettingsControl() {
   if (editing === "pricing") return renderPricingEditor(settings);
   if (editing === "quoteForm") return renderQuoteFormEditor(settings);
   if (editing === "services") return renderServicesSummary(true);
+  if (editing === "locations") return renderLocationSettings(true);
   return `
     <section class="split-grid">
       ${settingsSummaryCard("Finance Details", "Banking details shown on customer project/payment screens", [
@@ -498,6 +709,7 @@ function renderSettingsControl() {
     ], "quoteForm")}
     ${pricingSummaryCard(settings)}
     ${renderServicesSummary(false)}
+    ${renderLocationSettings(false)}
   `;
 }
 
@@ -519,7 +731,7 @@ function pricingSummaryCard(settings) {
   return `
     <section class="ops-panel settings-card">
       <div class="panel-head">
-        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, L1-L4, W1-W4 and X/A-D values used in instant quotes</span></div>
+        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, L1-L4, W0-W5 and X/A-D values used in instant quotes</span></div>
         <button class="ops-btn light" data-edit-settings="pricing">Edit</button>
       </div>
       <div class="settings-matrix readonly">
@@ -542,17 +754,61 @@ function pricingReadOnlyGroup(title, values) {
 }
 
 function renderServicesSummary(isEditing) {
+  const configuredServices = activeServices();
+  if (isEditing) {
+    return `
+      <section class="ops-panel settings-editor">
+        <div class="panel-head"><div><h2>Service Configuration</h2><span>Add or remove services used in estimate forms and team abilities.</span></div>${settingsEditorActions()}</div>
+        <div class="service-config-list">
+          ${configuredServices.map((service, index) => `
+            <div class="service-config-row">
+              <input value="${escapeHtml(service)}" data-service-index="${index}" />
+              <button class="ops-btn light" data-remove-service="${index}">Remove</button>
+            </div>
+          `).join("") || `<div class="empty-note">No services configured yet.</div>`}
+        </div>
+        <div class="button-row"><button class="ops-btn light" data-add-service>Add Service</button></div>
+      </section>
+    `;
+  }
   return `
     <section class="ops-panel settings-card">
       <div class="panel-head">
-        <div><h2>Service Configuration</h2><span>Services available in the customer estimate flow</span></div>
-        ${isEditing ? `<button class="ops-btn light" data-cancel-settings>Close</button>` : `<button class="ops-btn light" data-edit-settings="services">View</button>`}
+        <div><h2>Service Configuration</h2><span>Services available in forms and team setup</span></div>
+        <button class="ops-btn light" data-edit-settings="services">Edit</button>
       </div>
       <div class="service-settings">
-        ${services.map((service) => `<span>${service}</span>`).join("")}
+        ${configuredServices.map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
       </div>
     </section>
   `;
+}
+
+function renderLocationSettings(isEditing) {
+  const locations = activeServiceLocations();
+  const cityNames = Object.keys(locations);
+  if (isEditing) {
+    return `
+      <section class="ops-panel settings-editor">
+        <div class="panel-head"><div><h2>City And Neighbourhoods</h2><span>Only these service areas can continue through the estimate form.</span></div>${settingsEditorActions()}</div>
+        <div class="service-config-list">
+          ${cityNames.map((city, cityIndex) => `
+            <div class="location-config-row">
+              <input value="${escapeHtml(city)}" data-location-city-index="${cityIndex}" />
+              <input value="${escapeHtml((locations[city] || []).join(", "))}" data-location-areas-index="${cityIndex}" placeholder="Neighbourhoods separated by commas" />
+              <button class="ops-btn light" data-remove-location-city="${cityIndex}">Remove</button>
+            </div>
+          `).join("") || `<div class="empty-note">No service cities configured yet.</div>`}
+        </div>
+        <div class="button-row"><button class="ops-btn light" data-add-location-city>Add City</button></div>
+      </section>
+    `;
+  }
+  return settingsSummaryCard("City And Neighbourhoods", "Cities and suburbs available in the estimate form", [
+    ["Cities", cityNames.length],
+    ["Neighbourhoods", Object.values(locations).reduce((sum, areas) => sum + areas.length, 0)],
+    ["Active Areas", cityNames.slice(0, 3).join(", ") || "None"],
+  ], "locations");
 }
 
 function renderFinanceEditor(settings) {
@@ -589,7 +845,7 @@ function renderPricingEditor(settings) {
       <div class="settings-matrix four">
         ${pricingGroup("Time Rating", "time", settings.pricing.time, { T1: "1-2 hours", T2: "2-4 hours", T3: "5-8 hours", T4: "2 days" })}
         ${pricingGroup("Load Rating", "load", settings.pricing.load, { L1: "1 dustbin", L2: "2 dustbins", L3: "Half bakkie / half ton bag", L4: "Full bakkie / 1 ton bag" })}
-        ${pricingGroup("Waste Removal", "waste", settings.pricing.waste, { W1: "Small removal", W2: "Medium removal", W3: "Large removal", W4: "Heavy removal" })}
+        ${pricingGroup("Waste Removal", "waste", settings.pricing.waste, { W0: "No removal", W1: "1-2 dustbins", W2: "Half bakkie load", W3: "Full bakkie load", W4: "More than full bakkie", W5: "Unsure" })}
         ${pricingGroup("X Rating", "complexity", settings.pricing.complexity, { A: "Easy", B: "Moderate", C: "Tedious", D: "Complex" })}
       </div>
     </section>
@@ -708,7 +964,7 @@ function renderTeamFullView(index) {
         </div>
       </div>
     </section>
-    ${renderTeamCalendar(team)}
+    ${renderTeamCalendar(team, { canBlock: true, teamIndex: index })}
   `;
 }
 
@@ -749,13 +1005,12 @@ function renderTeamColourEditor(team, teamIndex) {
   const selected = team.color || teamColorOptions[0].value;
   return `
     <section class="team-edit-section">
-      <div class="panel-head"><div><h2>Team Colour</h2><span>Choose an identifier colour. Green and orange are reserved for CGG status and brand use.</span></div></div>
+      <div class="panel-head compact-head"><div><h2>Team Colour</h2><span>Choose an identifier colour.</span></div></div>
       <div class="team-colour-grid">
         ${teamColorOptions.map(option => `
-          <label class="team-colour-option ${selected === option.value ? "selected" : ""}">
+          <label class="team-colour-option ${selected === option.value ? "selected" : ""}" title="${escapeHtml(option.name)}" aria-label="${escapeHtml(option.name)}">
             <input type="radio" name="team-colour-${teamIndex}" value="${escapeHtml(option.value)}" data-team-index="${teamIndex}" data-team-field="color" ${selected === option.value ? "checked" : ""} />
             <span style="--swatch: ${escapeHtml(option.value)}"></span>
-            ${escapeHtml(option.name)}
           </label>
         `).join("")}
       </div>
@@ -766,7 +1021,7 @@ function renderTeamColourEditor(team, teamIndex) {
 function renderTeamAvailabilityEditor(team, teamIndex) {
   return `
     <section class="team-edit-section">
-      <div class="panel-head"><div><h2>Team Availability</h2><span>Set working times and block unavailable calendar slots.</span></div><button class="ops-btn light" data-add-block-time="${teamIndex}">Block Time</button></div>
+      <div class="panel-head"><div><h2>Team Availability</h2><span>Set the normal working times used by the team calendar.</span></div></div>
       <div class="availability-grid">
         ${calendarDays.map(day => {
           const availability = team.availability[day.key] || defaultAvailability[day.key];
@@ -778,17 +1033,6 @@ function renderTeamAvailabilityEditor(team, teamIndex) {
             </div>
           `;
         }).join("")}
-      </div>
-      <div class="block-time-list">
-        ${(team.blockedTimes || []).map((block, blockIndex) => `
-          <div class="block-time-row">
-            <input type="date" value="${escapeHtml(block.date || todayKey())}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="date" />
-            <input type="time" value="${escapeHtml(block.start || "12:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="start" />
-            <input type="time" value="${escapeHtml(block.end || "13:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="end" />
-            <input placeholder="Reason" value="${escapeHtml(block.reason || "")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="reason" />
-            <button class="ops-btn light" data-remove-block-time="${teamIndex}:${blockIndex}">Remove</button>
-          </div>
-        `).join("") || `<div class="empty-note">No blocked times yet.</div>`}
       </div>
     </section>
   `;
@@ -819,7 +1063,7 @@ function renderServiceAbilityEditor(team, teamIndex) {
     <section class="team-edit-section">
       <div class="panel-head"><div><h2>Service Ability</h2><span>Tick all services this team can perform</span></div></div>
       <div class="service-grid tight">
-        ${services.filter(service => service !== "Not Sure").map(service => `
+        ${activeTeamServices().map(service => `
           <label class="service-chip ${selected.has(service) ? "selected" : ""}">
             <input type="checkbox" data-team-service="${teamIndex}" value="${escapeHtml(service)}" ${selected.has(service) ? "checked" : ""} />
             ${service}
@@ -878,6 +1122,7 @@ function teamProjectBox(project) {
 function renderTeamCalendar(team, options = {}) {
   const days = calendarVisibleDays();
   const portalClass = options.portal ? "team-calendar-portal" : "";
+  const canBlock = options.canBlock || options.portal;
   return `
     <section class="ops-panel team-calendar ${portalClass}" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <div class="panel-head">
@@ -885,19 +1130,20 @@ function renderTeamCalendar(team, options = {}) {
         <div class="calendar-controls">
           <button class="${state.teamCalendarMode === "today" ? "active" : ""}" data-calendar-mode="today">Today</button>
           <button class="${state.teamCalendarMode === "week" ? "active" : ""}" data-calendar-mode="week">This Week</button>
+          ${canBlock ? `<button class="block-time-btn ${state.calendarBlockMode ? "active block-active" : ""}" data-toggle-block-time>Block Time</button>` : ""}
           <button data-calendar-shift="-1">‹</button>
           <button data-calendar-shift="1">›</button>
         </div>
       </div>
       <div class="calendar-grid ${state.teamCalendarMode === "today" ? "today" : ""}">
-        ${days.map(date => renderCalendarDay(team, date)).join("")}
+        ${days.map(date => renderCalendarDay(team, date, false)).join("")}
       </div>
-      ${options.portal ? renderTeamPortalBlockManager(team, options.teamIndex) : ""}
+      ${canBlock && state.calendarBlockMode ? renderCalendarBlockOverlay(team, options.teamIndex, days) : ""}
     </section>
   `;
 }
 
-function renderCalendarDay(team, date) {
+function renderCalendarDay(team, date, canBlock = false) {
   const key = dateKey(date);
   const dayKey = calendarDays[date.getDay() - 1]?.key;
   const availability = team.availability[dayKey] || { enabled: false, start: "", end: "" };
@@ -908,7 +1154,7 @@ function renderCalendarDay(team, date) {
     .sort((a, b) => a.start.localeCompare(b.start));
   const blocks = (team.blockedTimes || []).filter(block => block.date === key).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
   return `
-    <article class="calendar-day">
+    <article class="calendar-day ${state.calendarBlockMode && canBlock ? "selectable" : ""} ${state.calendarBlockDate === key ? "selected-block-day" : ""}" ${state.calendarBlockMode && canBlock ? `data-calendar-block-day="${key}"` : ""}>
       <div class="calendar-day-head"><strong>${dayLabel(date)}</strong><span>${key}</span></div>
       ${availability.enabled ? `<div class="calendar-open">Open ${availability.start} - ${availability.end}</div>` : `<div class="calendar-closed">Closed</div>`}
       <div class="calendar-items">
@@ -923,7 +1169,7 @@ function renderCalendarDay(team, date) {
 function calendarBooking(segment) {
   const { project, start, end, hours, index, total } = segment;
   return `
-    <button class="calendar-booking" data-open-team-project="${project.reference}">
+    <button class="calendar-booking ${project.teamAccepted ? "accepted" : "needs-decision"}" data-open-team-project="${project.reference}">
       <strong>${escapeHtml(projectName(project))}</strong>
       <span>${start} - ${end} · ${hours}h${total > 1 ? ` · Day ${index + 1}/${total}` : ""} · ${project.customer.firstName}</span>
     </button>
@@ -974,34 +1220,50 @@ function calendarBlock(block) {
   return `<div class="calendar-block"><strong>Blocked</strong><span>${escapeHtml(block.start)} - ${escapeHtml(block.end)} · ${escapeHtml(block.reason || "Unavailable")}</span></div>`;
 }
 
-function renderTeamPortalBlockManager(team, teamIndex) {
+function renderCalendarBlockOverlay(team, teamIndex, days) {
   return `
-    <section class="team-calendar-block-manager">
-      <div class="panel-head"><div><h2>Block Unavailable Time</h2><span>Add times when the team cannot accept new jobs.</span></div><button class="ops-btn light" data-add-block-time="${teamIndex}">Block Time</button></div>
-      <div class="block-time-list">
-        ${(team.blockedTimes || []).map((block, blockIndex) => `
-          <div class="block-time-row">
-            <input type="date" value="${escapeHtml(block.date || todayKey())}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="date" />
-            <input type="time" value="${escapeHtml(block.start || "12:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="start" />
-            <input type="time" value="${escapeHtml(block.end || "13:00")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="end" />
-            <input placeholder="Reason" value="${escapeHtml(block.reason || "")}" data-team-index="${teamIndex}" data-block-index="${blockIndex}" data-block-field="reason" />
-            <button class="ops-btn light" data-remove-block-time="${teamIndex}:${blockIndex}">Remove</button>
-          </div>
-        `).join("") || `<div class="empty-note">No blocked times yet.</div>`}
+    <div class="calendar-block-overlay">
+      <section class="calendar-block-modal" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
+        <div class="panel-head">
+          <div><h2>Block Time</h2><span>Select the day, then add the unavailable time.</span></div>
+          <button class="ops-btn light" data-cancel-calendar-block>Close</button>
+        </div>
+        ${state.calendarBlockDate ? renderCalendarBlockForm(team, teamIndex) : `<div class="calendar-block-hint">Select a day in the calendar to block time.</div>`}
+        <div class="calendar-grid block-picker ${state.teamCalendarMode === "today" ? "today" : ""}">
+          ${days.map(date => renderCalendarDay(team, date, true)).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderCalendarBlockForm(team, teamIndex) {
+  const form = state.calendarBlockForm;
+  return `
+    <section class="calendar-block-form">
+      <div>
+        <h3>Block ${escapeHtml(state.calendarBlockDate)}</h3>
+        <span>Set the unavailable time for this team.</span>
       </div>
+      <input type="time" value="${escapeHtml(form.start)}" data-calendar-block-field="start" />
+      <input type="time" value="${escapeHtml(form.end)}" data-calendar-block-field="end" />
+      <input placeholder="Reason" value="${escapeHtml(form.reason)}" data-calendar-block-field="reason" />
+      <label class="mini-check"><input type="checkbox" data-calendar-block-field="recurring" ${form.recurring ? "checked" : ""} /> Repeat weekly</label>
+      <label class="mini-check"><input type="checkbox" data-calendar-block-field="repeatWeekly" ${form.repeatWeekly ? "checked" : ""} /> For 8 weeks</label>
+      <button class="ops-btn orange" data-save-calendar-block="${teamIndex}">Save Block</button>
+      <button class="ops-btn light" data-cancel-calendar-block>Cancel</button>
     </section>
   `;
 }
 
 function renderTeamPortal(team, index) {
   const current = teamProjects(team.name, "current");
-  const planned = teamProjects(team.name, "planned");
-  const past = teamProjects(team.name, "past");
   const serviceAbility = team.serviceAbilityList?.length ? team.serviceAbilityList : String(team.serviceAbility || "").split(",").map(item => item.trim()).filter(Boolean);
   const serviceAreas = team.serviceAreasList?.length ? team.serviceAreasList : String(team.serviceAreas || "").split(",").map(item => item.trim()).filter(Boolean);
   const members = formattedTeamMembers(team);
+  const selectedProject = state.projects.find(project => project.reference === state.teamPortalProjectRef && project.team === team.name);
   return `
-    <main class="team-portal-shell">
+    <main class="team-portal-shell" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <section class="team-portal-header">
         <img class="team-portal-logo" src="/assets/CGG_BO_Logo.png" alt="City Garden Guys" />
         <div>
@@ -1010,8 +1272,8 @@ function renderTeamPortal(team, index) {
           <p>${escapeHtml(team.mainMember || "Team owner")} · ${phoneCopyButton(team.ownerContact || "No number set")}</p>
         </div>
       </section>
-      <section class="team-portal-grid">
-        <article class="ops-panel team-full">
+      <section class="team-portal-grid team-portal-info-only">
+        <article class="ops-panel team-full" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
           <div class="panel-head"><div><h2>Team Info</h2><span>Details visible to this team owner</span></div><span class="status-pill">${current.length} current</span></div>
           <div class="team-lines dense">
             ${teamLine("Owner", team.mainMember || "Not set")}
@@ -1022,32 +1284,40 @@ function renderTeamPortal(team, index) {
             ${teamLine("Team Link", teamPath(team))}
           </div>
         </article>
-        ${teamPortalProjectPanel("Current Projects", current)}
-        ${teamPortalProjectPanel("Upcoming Projects", planned)}
-        ${teamPortalProjectPanel("Past Projects", past)}
       </section>
       ${renderTeamCalendar(team, { portal: true, teamIndex: index })}
+      ${selectedProject ? renderTeamProjectDecisionModal(selectedProject) : ""}
       <div class="toast" id="toast"></div>
     </main>
   `;
 }
 
-function teamPortalProjectPanel(title, projects) {
+function renderTeamProjectDecisionModal(project) {
   return `
-    <article class="ops-panel">
-      <div class="panel-head"><div><h2>${title}</h2><span>${projects.length} assigned</span></div></div>
-      <div class="team-project-list">
-        ${projects.map(project => `
-          <div class="team-project-row">
-            <div>
-              <strong>${project.reference}</strong>
-              <span>${project.customer.firstName} ${project.customer.lastName} · ${fullAddress(project)} · ${project.status}${project.teamAccepted ? " · Accepted" : ""}</span>
-            </div>
-            ${project.status !== "Completed" ? `<button class="ops-btn light" data-accept-team-project="${project.reference}" ${project.teamAccepted ? "disabled" : ""}>${project.teamAccepted ? "Accepted" : "Accept Project"}</button>` : ""}
-          </div>
-        `).join("") || `<div class="team-project-row"><span>No projects in this section</span></div>`}
-      </div>
-    </article>
+    <div class="calendar-block-overlay">
+      <section class="team-project-modal ops-panel">
+        <div class="panel-head">
+          <div><h2>${escapeHtml(projectName(project))}</h2><span>${escapeHtml(project.reference)} · ${escapeHtml(project.status)}</span></div>
+          <button class="ops-btn light" data-close-team-project>Close</button>
+        </div>
+        <div class="team-project-modal-grid">
+          ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
+          ${dataItem("Cell", project.customer.cell || "Not supplied")}
+          ${dataItem("Area", project.property.suburb || project.property.city || "Not supplied")}
+          ${dataItem("Address", fullAddress(project))}
+          ${dataItem("Date", project.scheduledDate || "Not scheduled")}
+          ${dataItem("Time", project.scheduledTime || "09:00")}
+          ${dataItem("Duration", `${projectDurationHours(project)} hours`)}
+          ${dataItem("Quote", money(project.price))}
+        </div>
+        <label class="field full"><span class="field-label">Reject Reason</span><select data-team-project-reject-reason><option value="">Choose reason</option><option>Team unavailable</option><option>Area too far</option><option>Insufficient time allocated</option><option>Equipment unavailable</option><option>Other</option></select></label>
+        <div class="button-row">
+          <button class="ops-btn orange" data-team-project-action="accept" data-team-project-ref="${project.reference}" ${project.teamAccepted ? "disabled" : ""}>${project.teamAccepted ? "Accepted" : "Accept Project"}</button>
+          <button class="ops-btn light" data-team-project-action="move" data-team-project-ref="${project.reference}">Move Request</button>
+          <button class="ops-btn light" data-team-project-action="reject" data-team-project-ref="${project.reference}">Reject</button>
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -1067,11 +1337,11 @@ function renderEstimateShell() {
 }
 
 function renderEstimateStep() {
-  if (state.step === "customer") return renderCustomerDetails();
   if (state.step === "property") return renderPropertyDetails();
   if (state.step === "services") return renderServiceSelection();
   if (state.step === "areas") return renderAreaUploads();
   if (state.step === "questions") return renderQuickQuestions();
+  if (state.step === "customer") return renderCustomerDetails();
   if (state.step === "quote") return renderQuoteScreen(selectedProject());
   if (state.step === "accepted") return renderAccepted(selectedProject());
   const quoteForm = state.settings.quoteForm;
@@ -1080,7 +1350,7 @@ function renderEstimateStep() {
       <span class="eyebrow">Instant estimate</span>
       <h1>${escapeHtml(quoteForm.title)}</h1>
       <p>${escapeHtml(quoteForm.intro)}</p>
-      <button class="ops-btn orange large" data-step="customer">${escapeHtml(quoteForm.buttonText)}</button>
+      <button class="ops-btn orange large" data-step="property">${escapeHtml(quoteForm.buttonText)}</button>
     </div>
   `;
 }
@@ -1088,7 +1358,7 @@ function renderEstimateStep() {
 function renderCustomerDetails() {
   const match = state.matchedCustomer;
   return `
-    ${stepHeader("Customer Details", "Contact details for quote and updates.")}
+    ${stepHeader("Personal Details", "Contact details for quote and updates.")}
     ${match ? `<div class="returning-customer"><strong>Returning customer found</strong><span>${escapeHtml(match.firstName)} ${escapeHtml(match.lastName)} · ${escapeHtml(match.cell)}</span></div>` : `<div class="returning-customer muted"><strong>Cell number is the unique customer ID</strong><span>If this client has used CGG before, their details will appear after entering the cell number.</span></div>`}
     <div class="control-grid">
       ${formInput("firstName", "First Name", state.form.customer.firstName, "customer")}
@@ -1100,28 +1370,32 @@ function renderCustomerDetails() {
         <select data-group="customer" data-field="contactMethod">${["WhatsApp", "Call", "Email"].map(option => `<option ${state.form.customer.contactMethod === option ? "selected" : ""}>${option}</option>`).join("")}</select>
       </label>
     </div>
-    ${stepActions("start", "property")}
+    <div class="button-row"><button class="ops-btn light" data-step="questions">Back</button><button class="ops-btn orange large" id="generateQuote">Generate Estimate</button></div>
   `;
 }
 
 function renderPropertyDetails() {
+  const locations = activeServiceLocations();
+  const cities = Object.keys(locations);
+  const city = state.form.property.city;
+  const neighbourhoods = locations[city] || [];
   return `
-    ${stepHeader("Property Details", "Address, map link and access notes.")}
+    ${stepHeader("Property Details", "Tell us where the clean-up needs to happen.")}
     <div class="control-grid">
+      <label class="field"><span class="field-label">City</span><input list="service-city-options" value="${escapeHtml(city)}" data-group="property" data-field="city" placeholder="Choose or type your city" /><datalist id="service-city-options">${cities.map(item => `<option value="${escapeHtml(item)}"></option>`).join("")}</datalist></label>
+      <label class="field"><span class="field-label">Suburb / Neighbourhood</span>${neighbourhoods.length ? `<select data-group="property" data-field="suburb"><option value="">Select neighbourhood</option>${neighbourhoods.map(area => `<option ${state.form.property.suburb === area ? "selected" : ""}>${escapeHtml(area)}</option>`).join("")}</select>` : `<input value="${escapeHtml(state.form.property.suburb)}" data-group="property" data-field="suburb" placeholder="Type suburb" />`}</label>
       ${formInput("street", "Street Address", state.form.property.street, "property")}
-      ${formInput("suburb", "Suburb", state.form.property.suburb, "property")}
-      ${formInput("city", "City", state.form.property.city, "property")}
-      ${formInput("mapsLink", "Google Maps Link", state.form.property.mapsLink, "property")}
+      <label class="field"><span class="field-label">Location</span><div class="location-input-row"><input value="${escapeHtml(state.form.property.mapsLink)}" data-group="property" data-field="mapsLink" placeholder="Use current location or paste a map link" /><button type="button" class="ops-btn light" id="useLocation">Use Location</button></div></label>
     </div>
     <label class="field full"><span class="field-label">Access Notes</span><textarea data-group="property" data-field="accessNotes" placeholder="Gate code, dogs, parking, security estate">${escapeHtml(state.form.property.accessNotes)}</textarea></label>
-    ${stepActions("customer", "services")}
+    ${stepActions("start", "services")}
   `;
 }
 
 function renderServiceSelection() {
   return `
     ${stepHeader("Service Selection", "Select all that apply.")}
-    <div class="service-grid">${services.map(service => `
+    <div class="service-grid">${activeServices().map(service => `
       <label class="service-chip ${state.form.selectedServices.includes(service) ? "selected" : ""}">
         <input type="checkbox" data-choice-service value="${escapeHtml(service)}" ${state.form.selectedServices.includes(service) ? "checked" : ""} />
         ${service}
@@ -1146,7 +1420,15 @@ function renderAreaCard(area, index) {
       <div class="area-head"><strong>Area ${index + 1}</strong>${state.form.areas.length > 1 ? `<button class="icon-btn" data-remove-area="${index}">×</button>` : ""}</div>
       <div class="control-grid">
         <label class="field"><span class="field-label">Area Name</span><input value="${escapeHtml(area.name)}" data-area="${index}" data-area-field="name" /></label>
-        <label class="field"><span class="field-label">Photos</span><input type="file" accept="image/*" multiple data-photo-area="${index}" /></label>
+        <div class="field">
+          <span class="field-label">Photos</span>
+          <div class="photo-action-row">
+            <button type="button" class="ops-btn light" data-open-photo="upload-${index}">Upload</button>
+            <button type="button" class="ops-btn light" data-open-photo="camera-${index}">Camera</button>
+          </div>
+          <input class="hidden-file" id="upload-${index}" type="file" accept="image/*" multiple data-photo-area="${index}" />
+          <input class="hidden-file" id="camera-${index}" type="file" accept="image/*" capture="environment" multiple data-photo-area="${index}" />
+        </div>
       </div>
       <label class="field full"><span class="field-label">Area Notes</span><textarea data-area="${index}" data-area-field="notes" placeholder="Remove branches, clear green waste, cut back overgrowth.">${escapeHtml(area.notes)}</textarea></label>
       <div class="thumb-row">${area.photos.length ? area.photos.map(photo => `<img src="${photo.src}" alt="${escapeHtml(photo.name)}" />`).join("") : `<span>No photos yet</span>`}</div>
@@ -1159,10 +1441,10 @@ function renderQuickQuestions() {
   return `
     ${stepHeader("Quick Estimate", "These answers create the internal rating and price.")}
     ${question("How overgrown is the area?", "overgrown", ["Light", "Moderate", "Heavy"], a.overgrown)}
-    ${question("How much green waste do you expect?", "waste", ["1-2 dustbins", "Half bakkie load", "Full bakkie load", "Not sure"], a.waste)}
+    ${question("Green waste removal", "waste", ["No removal - we will keep it tidy for you to remove", "1-2 dustbins", "Half bakkie load", "Full bakkie load", "More", "Unsure"], a.waste)}
     ${question("How easy is access?", "access", ["Easy", "Moderate", "Difficult"], a.access)}
     ${question("How urgent is the project?", "urgency", ["ASAP", "This week", "Next week", "Flexible"], a.urgency)}
-    <div class="button-row"><button class="ops-btn light" data-step="areas">Back</button><button class="ops-btn orange large" id="generateQuote">Generate Estimate</button></div>
+    ${stepActions("areas", "customer")}
   `;
 }
 
@@ -1268,6 +1550,7 @@ function bindOffice() {
   document.querySelectorAll("[data-office-tab]").forEach(button => button.addEventListener("click", () => {
     state.officeTab = button.dataset.officeTab;
     state.mobileMenuOpen = false;
+    if (state.officeTab === "pipeline") syncSelectedProjectToPipelineStage();
     render();
   }));
   document.getElementById("mobileMenuToggle")?.addEventListener("click", () => {
@@ -1280,16 +1563,26 @@ function bindOffice() {
   });
   document.querySelectorAll("[data-select-project]").forEach(button => button.addEventListener("click", () => {
     state.selectedRef = button.dataset.selectProject;
+    if (state.officeTab === "pipeline") state.pipelineStage = pipelineStageForProject(selectedProject());
+    render();
+  }));
+  document.querySelectorAll("[data-pipeline-stage-tab]").forEach(button => button.addEventListener("click", () => {
+    state.pipelineStage = button.dataset.pipelineStageTab;
+    const first = pipelineProjects()[0];
+    if (first) state.selectedRef = first.reference;
     render();
   }));
   document.querySelectorAll("[data-open-notification]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.openNotification);
+    if (project && ["Request Submitted", "Estimate Generated"].includes(project.status)) applyProjectStatus(project, "Awaiting Verification");
     state.selectedRef = button.dataset.openNotification;
-    state.officeTab = "overview";
+    state.officeTab = "pipeline";
+    saveAll();
     render();
   }));
   document.querySelectorAll("[data-handle-notification]").forEach(button => button.addEventListener("click", () => {
     const project = state.projects.find(item => item.reference === button.dataset.handleNotification);
-    if (project && ["Request Submitted", "Estimate Generated"].includes(project.status)) project.status = "Awaiting Verification";
+    if (project && ["Request Submitted", "Estimate Generated"].includes(project.status)) applyProjectStatus(project, "Awaiting Verification");
     state.selectedRef = button.dataset.handleNotification;
     state.officeTab = "pipeline";
     saveAll();
@@ -1301,8 +1594,25 @@ function bindOffice() {
   });
   document.querySelectorAll("[data-project-field]").forEach(field => field.addEventListener("input", updateProjectField));
   document.querySelectorAll("[data-set-status]").forEach(button => button.addEventListener("click", () => {
-    selectedProject().status = button.dataset.setStatus;
+    applyProjectStatus(selectedProject(), button.dataset.setStatus);
+    if (state.officeTab === "pipeline") state.pipelineStage = pipelineStageForProject(selectedProject());
     saveAll();
+    render();
+  }));
+  document.querySelectorAll("[data-open-assign-team]").forEach(button => button.addEventListener("click", () => {
+    state.assigningProjectRef = button.dataset.openAssignTeam;
+    render();
+  }));
+  document.querySelectorAll("[data-close-assign-team]").forEach(button => button.addEventListener("click", () => {
+    state.assigningProjectRef = null;
+    render();
+  }));
+  document.querySelectorAll("[data-assign-project-slot]").forEach(button => button.addEventListener("click", () => {
+    const [teamIndex, date, time] = button.dataset.assignProjectSlot.split("|");
+    assignProjectToTeam(state.assigningProjectRef, Number(teamIndex), date, time);
+    state.assigningProjectRef = null;
+    saveAll();
+    showToast("Project allocated to team.");
     render();
   }));
   document.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => showToast(button.dataset.action)));
@@ -1332,6 +1642,38 @@ function bindOffice() {
   }));
   document.querySelectorAll("[data-copy-form-link]").forEach(button => button.addEventListener("click", () => {
     copyText(toAbsoluteUrl(button.dataset.copyFormLink), "Form link copied.");
+  }));
+  document.querySelectorAll("[data-service-index]").forEach(field => {
+    field.addEventListener("input", updateConfiguredService);
+    field.addEventListener("change", updateConfiguredService);
+  });
+  document.querySelectorAll("[data-add-service]").forEach(button => button.addEventListener("click", () => {
+    state.settings.services.push(`New Service ${state.settings.services.length + 1}`);
+    render();
+  }));
+  document.querySelectorAll("[data-remove-service]").forEach(button => button.addEventListener("click", () => {
+    const removed = state.settings.services.splice(Number(button.dataset.removeService), 1)[0];
+    removeServiceFromTeams(removed);
+    saveServiceTeams();
+    render();
+  }));
+  document.querySelectorAll("[data-location-city-index]").forEach(field => {
+    field.addEventListener("input", updateLocationCity);
+    field.addEventListener("change", updateLocationCity);
+  });
+  document.querySelectorAll("[data-location-areas-index]").forEach(field => {
+    field.addEventListener("input", updateLocationAreas);
+    field.addEventListener("change", updateLocationAreas);
+  });
+  document.querySelectorAll("[data-add-location-city]").forEach(button => button.addEventListener("click", () => {
+    const key = `New City ${Object.keys(state.settings.serviceLocations).length + 1}`;
+    state.settings.serviceLocations[key] = [];
+    render();
+  }));
+  document.querySelectorAll("[data-remove-location-city]").forEach(button => button.addEventListener("click", () => {
+    const city = Object.keys(state.settings.serviceLocations)[Number(button.dataset.removeLocationCity)];
+    delete state.settings.serviceLocations[city];
+    render();
   }));
   document.getElementById("saveSettings")?.addEventListener("click", () => {
     saveSettings();
@@ -1475,7 +1817,16 @@ function bindOffice() {
 function bindEstimate() {
   document.getElementById("backOffice")?.addEventListener("click", () => go("/"));
   document.querySelectorAll("[data-step]").forEach(button => button.addEventListener("click", () => {
+    if (state.step === "property" && button.dataset.step === "services" && !isServicedLocation()) {
+      state.areaUnavailable = true;
+      render();
+      return;
+    }
     state.step = button.dataset.step;
+    render();
+  }));
+  document.querySelectorAll("[data-close-area-unavailable]").forEach(button => button.addEventListener("click", () => {
+    state.areaUnavailable = false;
     render();
   }));
   document.querySelectorAll("[data-group][data-field]").forEach(field => {
@@ -1495,10 +1846,14 @@ function bindEstimate() {
   document.querySelectorAll("[data-area][data-area-field]").forEach(field => field.addEventListener("input", () => {
     state.form.areas[Number(field.dataset.area)][field.dataset.areaField] = field.value;
   }));
+  document.querySelectorAll("[data-open-photo]").forEach(button => button.addEventListener("click", () => {
+    document.getElementById(button.dataset.openPhoto)?.click();
+  }));
   document.querySelectorAll("[data-photo-area]").forEach(field => field.addEventListener("change", async () => {
     state.form.areas[Number(field.dataset.photoArea)].photos = await readPhotos([...field.files].slice(0, 3));
     render();
   }));
+  document.getElementById("useLocation")?.addEventListener("click", useCurrentLocation);
   document.querySelectorAll("[data-remove-area]").forEach(button => button.addEventListener("click", () => {
     state.form.areas.splice(Number(button.dataset.removeArea), 1);
     render();
@@ -1516,7 +1871,7 @@ function bindEstimate() {
     render();
   });
   document.getElementById("acceptEstimate")?.addEventListener("click", () => {
-    selectedProject().status = "Quote Accepted";
+    applyProjectStatus(selectedProject(), "Quote Accepted");
     saveAll();
     state.step = "accepted";
     render();
@@ -1529,7 +1884,7 @@ function bindPublicProject(project) {
   bindCopyActions();
   document.querySelectorAll("[data-public-action]").forEach(button => button.addEventListener("click", () => {
     if (button.dataset.publicAction === "Quote accepted") {
-      project.status = "Quote Accepted";
+      applyProjectStatus(project, "Quote Accepted");
       saveAll();
       render();
       return;
@@ -1542,13 +1897,41 @@ function bindTeamPortal(teamIndex) {
   bindCopyActions();
   bindCalendarControls();
   bindBlockTimeControls();
-  document.querySelectorAll("[data-accept-team-project]").forEach(button => button.addEventListener("click", () => {
-    const project = state.projects.find(item => item.reference === button.dataset.acceptTeamProject);
+  document.querySelectorAll("[data-open-team-project]").forEach(button => button.addEventListener("click", event => {
+    event.preventDefault();
+    state.teamPortalProjectRef = button.dataset.openTeamProject;
+    render();
+  }));
+  document.querySelectorAll("[data-close-team-project]").forEach(button => button.addEventListener("click", () => {
+    state.teamPortalProjectRef = null;
+    render();
+  }));
+  document.querySelectorAll("[data-team-project-action]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.teamProjectRef);
     if (!project) return;
-    project.teamAccepted = true;
-    if (project.status === "Scheduled") project.status = "Team Assigned";
+    if (button.dataset.teamProjectAction === "accept") {
+      project.teamAccepted = true;
+      project.teamDecision = "Accepted";
+      if (project.status === "Scheduled") project.status = "Team Assigned";
+      showToast("Project accepted.");
+    }
+    if (button.dataset.teamProjectAction === "move") {
+      project.teamDecision = "Move Requested";
+      project.teamDecisionNote = "Team requested a new time.";
+      showToast("Move request sent to admin.");
+    }
+    if (button.dataset.teamProjectAction === "reject") {
+      const reason = document.querySelector("[data-team-project-reject-reason]")?.value;
+      if (!reason) {
+        showToast("Choose a reject reason first.");
+        return;
+      }
+      project.teamDecision = "Rejected";
+      project.teamDecisionNote = reason;
+      showToast("Project rejected and sent to admin.");
+    }
     saveAll();
-    showToast("Project accepted.");
+    state.teamPortalProjectRef = null;
     render();
   }));
 }
@@ -1561,19 +1944,33 @@ function bindAvailabilityControls() {
 }
 
 function bindBlockTimeControls() {
-  document.querySelectorAll("[data-block-index][data-block-field]").forEach(field => {
-    field.addEventListener("input", updateBlockedTimeField);
-    field.addEventListener("change", updateBlockedTimeField);
-  });
-  document.querySelectorAll("[data-add-block-time]").forEach(button => button.addEventListener("click", () => {
-    state.serviceTeams[Number(button.dataset.addBlockTime)].blockedTimes.push({ date: todayKey(), start: "12:00", end: "13:00", reason: "Unavailable" });
-    saveServiceTeams();
+  document.querySelectorAll("[data-toggle-block-time]").forEach(button => button.addEventListener("click", () => {
+    state.calendarBlockMode = !state.calendarBlockMode;
+    state.calendarBlockDate = null;
     render();
   }));
-  document.querySelectorAll("[data-remove-block-time]").forEach(button => button.addEventListener("click", () => {
-    const [teamIndex, blockIndex] = button.dataset.removeBlockTime.split(":").map(Number);
-    state.serviceTeams[teamIndex].blockedTimes.splice(blockIndex, 1);
+  document.querySelectorAll("[data-calendar-block-day]").forEach(day => day.addEventListener("click", event => {
+    if (event.target.closest("[data-open-team-project]")) return;
+    state.calendarBlockDate = day.dataset.calendarBlockDay;
+    render();
+  }));
+  document.querySelectorAll("[data-calendar-block-field]").forEach(field => {
+    field.addEventListener("input", updateCalendarBlockForm);
+    field.addEventListener("change", updateCalendarBlockForm);
+  });
+  document.querySelectorAll("[data-save-calendar-block]").forEach(button => button.addEventListener("click", () => {
+    saveCalendarBlock(Number(button.dataset.saveCalendarBlock));
     saveServiceTeams();
+    state.calendarBlockMode = false;
+    state.calendarBlockDate = null;
+    state.calendarBlockForm = blankCalendarBlock();
+    showToast("Time blocked.");
+    render();
+  }));
+  document.querySelectorAll("[data-cancel-calendar-block]").forEach(button => button.addEventListener("click", () => {
+    state.calendarBlockMode = false;
+    state.calendarBlockDate = null;
+    state.calendarBlockForm = blankCalendarBlock();
     render();
   }));
 }
@@ -1609,9 +2006,27 @@ function updateProjectField(event) {
 
 function updateFormField(event) {
   state.form[event.target.dataset.group][event.target.dataset.field] = event.target.value;
+  if (event.target.dataset.group === "property" && event.target.dataset.field === "city") {
+    const areas = activeServiceLocations()[event.target.value] || [];
+    if (areas.length && !areas.includes(state.form.property.suburb)) state.form.property.suburb = "";
+    if (event.type === "change") render();
+  }
   if (event.target.dataset.group === "customer" && event.target.dataset.field === "cell") {
     hydrateCustomerFromCell(event.target.value);
   }
+}
+
+function useCurrentLocation() {
+  if (!navigator.geolocation) {
+    showToast("Location is not available. Paste a map link instead.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(position => {
+    const { latitude, longitude } = position.coords;
+    state.form.property.mapsLink = `https://maps.google.com/?q=${latitude},${longitude}`;
+    showToast("Location added.");
+    render();
+  }, () => showToast("Could not access location. Paste a map link instead."), { enableHighAccuracy: true, timeout: 10000 });
 }
 
 function updateSettingField(event) {
@@ -1629,6 +2044,40 @@ function updatePricingFlatField(event) {
 function updateFormLinkField(event) {
   const link = state.settings.quoteForm.links[Number(event.target.dataset.formLinkIndex)];
   link[event.target.dataset.formLinkField] = event.target.value;
+}
+
+function updateConfiguredService(event) {
+  const previous = state.settings.services[Number(event.target.dataset.serviceIndex)];
+  const next = event.target.value;
+  state.settings.services[Number(event.target.dataset.serviceIndex)] = next;
+  state.serviceTeams.forEach(team => {
+    if (!team.serviceAbilityList?.includes(previous)) return;
+    team.serviceAbilityList = team.serviceAbilityList.map(service => service === previous ? next : service).filter(Boolean);
+    team.serviceAbility = team.serviceAbilityList.join(", ");
+  });
+  saveServiceTeams();
+}
+
+function updateLocationCity(event) {
+  const index = Number(event.target.dataset.locationCityIndex);
+  const oldCity = Object.keys(state.settings.serviceLocations)[index];
+  const nextCity = event.target.value.trim() || oldCity;
+  if (oldCity === nextCity) return;
+  const entries = Object.entries(state.settings.serviceLocations);
+  entries[index] = [nextCity, entries[index][1]];
+  state.settings.serviceLocations = Object.fromEntries(entries);
+}
+
+function updateLocationAreas(event) {
+  const city = Object.keys(state.settings.serviceLocations)[Number(event.target.dataset.locationAreasIndex)];
+  state.settings.serviceLocations[city] = event.target.value.split(",").map(area => area.trim()).filter(Boolean);
+}
+
+function removeServiceFromTeams(service) {
+  state.serviceTeams.forEach(team => {
+    team.serviceAbilityList = (team.serviceAbilityList || []).filter(item => item !== service);
+    team.serviceAbility = team.serviceAbilityList.join(", ");
+  });
 }
 
 function updateTeamField(event) {
@@ -1659,11 +2108,9 @@ function updateAvailabilityField(event) {
   saveServiceTeams();
 }
 
-function updateBlockedTimeField(event) {
-  const team = state.serviceTeams[Number(event.target.dataset.teamIndex)];
-  const block = team.blockedTimes[Number(event.target.dataset.blockIndex)];
-  block[event.target.dataset.blockField] = event.target.value;
-  saveServiceTeams();
+function updateCalendarBlockForm(event) {
+  const field = event.target.dataset.calendarBlockField;
+  state.calendarBlockForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
 }
 
 function copyTeamLink(path) {
@@ -1747,7 +2194,7 @@ function calculateRating(form) {
   if (areaCount >= 2 || overgrown === "Moderate") time = "T2";
   if (areaCount >= 3 || overgrown === "Heavy" || heavy) time = "T3";
   if (areaCount >= 4 && overgrown === "Heavy") time = "T4";
-  let load = waste === "1-2 dustbins" ? "L2" : waste === "Full bakkie load" ? "L4" : waste === "Half bakkie load" || waste === "Not sure" ? "L3" : "L1";
+  let load = waste === "1-2 dustbins" ? "L2" : waste === "Full bakkie load" || waste === "More" ? "L4" : waste === "Half bakkie load" || waste === "Unsure" || waste === "Not sure" ? "L3" : "L1";
   let complexity = access === "Difficult" && heavy ? "D" : access === "Difficult" || overgrown === "Heavy" ? "C" : access === "Moderate" || overgrown === "Moderate" ? "B" : "A";
   return { time, load, complexity };
 }
@@ -1764,10 +2211,13 @@ function calculatePrice(rating, form) {
 }
 
 function wasteRatingForAnswer(answer) {
+  if (answer?.startsWith("No removal")) return "W0";
   if (answer === "1-2 dustbins") return "W1";
   if (answer === "Half bakkie load") return "W2";
-  if (answer === "Full bakkie load") return "W4";
-  return "W3";
+  if (answer === "Full bakkie load") return "W3";
+  if (answer === "More") return "W4";
+  if (answer === "Unsure" || answer === "Not sure") return "W5";
+  return "W5";
 }
 
 function seedProject(reference, firstName, lastName, suburb, status, price, time, load, complexity) {
@@ -1961,9 +2411,73 @@ function selectedProject() {
   return state.projects.find(project => project.reference === state.selectedRef) || state.projects[0];
 }
 
+function applyProjectStatus(project, status) {
+  project.status = status;
+  if (status === "Quote Verified") {
+    project.quoteVerifiedAt = new Date().toISOString();
+    project.customerQuoteReady = true;
+  }
+  if (status === "Quote Accepted") {
+    project.quoteAcceptedAt = project.quoteAcceptedAt || new Date().toISOString();
+    project.projectCreated = true;
+  }
+  if (status === "Project Review") project.reviewStartedAt = new Date().toISOString();
+  if (status === "Completed") project.completedAt = project.completedAt || new Date().toISOString();
+  if (status === "Cancelled") project.cancelledAt = project.cancelledAt || new Date().toISOString();
+}
+
+function pipelineStageForProject(project) {
+  if (project.status === "Cancelled") return "cancelled";
+  if (project.status === "Completed") return "completed";
+  if (project.status === "Project Review") return "review";
+  if (["Team Assigned", "Team On Route", "In Progress", "Scheduled"].includes(project.status)) return "upcoming";
+  if (project.status === "Quote Accepted" && (!project.team || project.team === "Unassigned" || !project.scheduledDate)) return "allocation";
+  if (project.status === "Quote Accepted") return "upcoming";
+  if (project.status === "Quote Verified") return "quote";
+  return "verification";
+}
+
+function syncSelectedProjectToPipelineStage() {
+  const selected = selectedProject();
+  state.pipelineStage = pipelineStageForProject(selected);
+  if (pipelineProjects().some(project => project.reference === state.selectedRef)) return;
+  const first = pipelineProjects()[0];
+  if (first) state.selectedRef = first.reference;
+}
+
+function assignProjectToTeam(reference, teamIndex, date, time) {
+  const project = state.projects.find(item => item.reference === reference);
+  const team = state.serviceTeams[teamIndex];
+  if (!project || !team) return;
+  project.team = team.name;
+  project.scheduledDate = date;
+  project.scheduledTime = time;
+  project.status = "Team Assigned";
+  project.teamAccepted = false;
+  project.teamDecision = "Pending";
+  project.teamDecisionNote = "";
+  project.teamAssignedAt = new Date().toISOString();
+}
+
 function filteredProjects() {
   const term = state.search.toLowerCase();
   return state.projects.filter(project => [project.reference, project.status, project.customer.firstName, project.customer.lastName, project.property.suburb].join(" ").toLowerCase().includes(term));
+}
+
+function pipelineProjects() {
+  if (state.officeTab !== "pipeline") return filteredProjects();
+  return filteredProjects().filter(project => pipelineStageForProject(project) === state.pipelineStage);
+}
+
+function renderPipelineStageTabs() {
+  return `
+    <div class="pipeline-stage-tabs">
+      ${pipelineStages.map(stage => {
+        const count = state.projects.filter(project => pipelineStageForProject(project) === stage.key).length;
+        return `<button class="${state.pipelineStage === stage.key ? "active" : ""}" data-pipeline-stage-tab="${stage.key}"><span>${stage.label}</span><small>${count}</small></button>`;
+      }).join("")}
+    </div>
+  `;
 }
 
 function projectsByStatus(list) {
@@ -2047,6 +2561,48 @@ function laterTime(first, second) {
   return timeToHours(first) > timeToHours(second) ? first : second;
 }
 
+function firstAvailableSlot(team, date, project) {
+  const key = dateKey(date);
+  const dayKey = calendarDays[date.getDay() - 1]?.key;
+  const availability = team.availability?.[dayKey] || defaultAvailability[dayKey];
+  if (!availability?.enabled) return null;
+  const duration = projectDurationHours(project);
+  const busy = [
+    ...state.projects
+      .filter(item => item.team === team.name && item.reference !== project.reference && item.status !== "Completed")
+      .flatMap(item => bookingSegmentsForProject(team, item))
+      .filter(segment => segment.date === key)
+      .map(segment => ({ start: segment.start, end: segment.end })),
+    ...(team.blockedTimes || []).filter(block => block.date === key).map(block => ({ start: block.start, end: block.end })),
+  ].sort((a, b) => timeToHours(a.start) - timeToHours(b.start));
+  let candidate = availability.start;
+  for (const item of busy) {
+    if (timeToHours(candidate) + duration <= timeToHours(item.start)) return { start: candidate, end: addHours(candidate, duration) };
+    if (timeToHours(item.end) > timeToHours(candidate)) candidate = item.end;
+  }
+  return timeToHours(candidate) + duration <= timeToHours(availability.end) ? { start: candidate, end: addHours(candidate, duration) } : null;
+}
+
+function addDays(value, days) {
+  const date = parseDate(value);
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function saveCalendarBlock(teamIndex) {
+  const team = state.serviceTeams[teamIndex];
+  if (!team || !state.calendarBlockDate) return;
+  const form = state.calendarBlockForm;
+  const repeatCount = form.recurring ? (form.repeatWeekly ? 8 : 4) : 1;
+  const blocks = Array.from({ length: repeatCount }, (_, index) => ({
+    date: addDays(state.calendarBlockDate, index * 7),
+    start: form.start || "12:00",
+    end: form.end || "13:00",
+    reason: form.reason || "Unavailable",
+  }));
+  team.blockedTimes = [...(team.blockedTimes || []), ...blocks].sort((a, b) => dateKey(a.date).localeCompare(dateKey(b.date)) || String(a.start || "").localeCompare(String(b.start || "")));
+}
+
 function countStatus(status) {
   return state.projects.filter(project => project.status === status).length;
 }
@@ -2118,6 +2674,27 @@ function estimateSource() {
   return new URLSearchParams(window.location.search).get("source") || state.settings.quoteForm.defaultSource || "Internal";
 }
 
+function activeServices() {
+  return (state.settings.services?.length ? state.settings.services : services).map(service => String(service || "").trim()).filter(Boolean);
+}
+
+function activeTeamServices() {
+  return activeServices().filter(service => service.toLowerCase() !== "not sure");
+}
+
+function activeServiceLocations() {
+  const locations = state.settings.serviceLocations || defaultSettings.serviceLocations;
+  return Object.fromEntries(Object.entries(locations).map(([city, areas]) => [city, (areas || []).map(area => String(area || "").trim()).filter(Boolean)]).filter(([city]) => city.trim()));
+}
+
+function isServicedLocation() {
+  const city = String(state.form.property.city || "").trim();
+  const suburb = String(state.form.property.suburb || "").trim();
+  const locations = activeServiceLocations();
+  if (!locations[city]) return false;
+  return !locations[city].length || locations[city].includes(suburb);
+}
+
 function formattedTeamMembers(team) {
   return (team.membersList || []).map(member => {
     const name = [member.name, member.surname].filter(Boolean).join(" ");
@@ -2159,13 +2736,15 @@ function loadSettings() {
 
 function mergeSettings(saved) {
   return {
+    services: Array.isArray(saved.services) && saved.services.length ? saved.services : [...defaultSettings.services],
+    serviceLocations: saved.serviceLocations && Object.keys(saved.serviceLocations).length ? saved.serviceLocations : { ...defaultSettings.serviceLocations },
     banking: { ...defaultSettings.banking, ...(saved.banking || {}) },
     pricing: {
       ...defaultSettings.pricing,
       ...(saved.pricing || {}),
       time: { ...defaultSettings.pricing.time, ...((saved.pricing || {}).time || {}) },
       load: { ...defaultSettings.pricing.load, ...((saved.pricing || {}).load || {}) },
-      waste: { ...defaultSettings.pricing.waste, ...((saved.pricing || {}).waste || {}) },
+      waste: normalizeWastePricing((saved.pricing || {}).waste || {}),
       complexity: { ...defaultSettings.pricing.complexity, ...((saved.pricing || {}).complexity || {}) },
     },
     quoteForm: {
@@ -2178,6 +2757,14 @@ function mergeSettings(saved) {
 
 function saveSettings() {
   localStorage.setItem("cggSettings", JSON.stringify(state.settings));
+}
+
+function normalizeWastePricing(savedWaste) {
+  const waste = { ...defaultSettings.pricing.waste, ...savedWaste };
+  if (savedWaste.W2 === 280) waste.W2 = defaultSettings.pricing.waste.W2;
+  if (savedWaste.W3 === 520) waste.W3 = defaultSettings.pricing.waste.W3;
+  if (savedWaste.W4 === 900) waste.W4 = defaultSettings.pricing.waste.W4;
+  return waste;
 }
 
 function loadServiceTeams() {
@@ -2286,6 +2873,16 @@ function blankTeam() {
     customArea: "",
     availability: mergeAvailability(),
     blockedTimes: [],
+  };
+}
+
+function blankCalendarBlock() {
+  return {
+    start: "12:00",
+    end: "13:00",
+    reason: "Unavailable",
+    recurring: false,
+    repeatWeekly: false,
   };
 }
 

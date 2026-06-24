@@ -591,6 +591,32 @@ tr:last-child td {
   resize: vertical;
 }
 
+.location-input-row,
+.photo-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.photo-action-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.location-input-row .ops-btn,
+.photo-action-row .ops-btn {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .span-2 {
   grid-column: 1 / -1;
 }
@@ -2020,11 +2046,74 @@ tr:last-child td {
   gap: 8px;
 }
 
-.pipe-step {
-  min-height: 42px;
+.pipeline-stage-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pipeline-stage-tabs button {
+  min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  padding: 0 10px;
+  padding: 6px 8px;
+  background: #fffdf8;
+  color: var(--forest);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  text-align: left;
+}
+
+.pipeline-stage-tabs button.active {
+  border-color: var(--forest);
+  background: #eef7d5;
+}
+
+.pipeline-stage-tabs small {
+  min-width: 22px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: var(--white);
+  color: var(--muted);
+  text-align: center;
+  font-size: 10px;
+}
+
+.pipeline-record-head {
+  align-items: stretch;
+}
+
+.pipeline-status-card {
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fffdf8;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+}
+
+.pipeline-status-card span,
+.pipeline-status-card small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.pipeline-status-card strong {
+  color: var(--forest);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pipe-step {
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
   color: var(--ink);
   background: #fffdf8;
   display: flex;
@@ -2043,6 +2132,14 @@ tr:last-child td {
   color: var(--forest);
   background: #e8f3cf;
   font-size: 11px;
+}
+
+.pipe-step small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.25;
 }
 
 .pipe-step.done,
@@ -2471,6 +2568,43 @@ tr:last-child td {
   background: #eef7d5;
   font-size: 12px;
   font-weight: 800;
+}
+
+.service-config-list {
+  display: grid;
+  gap: 8px;
+}
+
+.service-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.location-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.service-config-row input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--white);
+  color: var(--ink);
+}
+
+.location-config-row input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--white);
+  color: var(--ink);
 }
 
 .team-grid {
@@ -2915,34 +3049,33 @@ tr:last-child td {
 
 .team-edit-section {
   border-top: 1px solid var(--line);
-  padding-top: 12px;
+  padding-top: 10px;
   display: grid;
-  gap: 10px;
-}
-
-.team-colour-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
+.team-colour-grid {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .team-colour-option {
-  min-height: 36px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
   border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 0 8px;
+  border-radius: 6px;
+  padding: 3px;
   background: var(--white);
-  color: var(--ink);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
 }
 
 .team-colour-option.selected {
   border-color: var(--swatch);
-  box-shadow: inset 0 0 0 1px var(--swatch);
+  box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--swatch);
 }
 
 .team-colour-option input {
@@ -2952,11 +3085,10 @@ tr:last-child td {
 }
 
 .team-colour-option span {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
   background: var(--swatch);
-  flex: 0 0 12px;
 }
 
 .form-link-list {
@@ -3043,6 +3175,18 @@ tr:last-child td {
   border-color: rgba(255, 106, 0, 0.34);
 }
 
+.calendar-controls button.block-time-btn {
+  color: #334155;
+  background: #eef1f0;
+  border-color: #cbd5d1;
+}
+
+.calendar-controls button.block-active {
+  color: #17221b;
+  background: #d7ddda;
+  border-color: #9aa6a0;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -3062,6 +3206,16 @@ tr:last-child td {
   display: grid;
   gap: 7px;
   align-content: start;
+}
+
+.calendar-day.selectable {
+  cursor: pointer;
+}
+
+.calendar-day.selectable:hover,
+.calendar-day.selected-block-day {
+  border-color: rgba(255, 106, 0, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(255, 106, 0, 0.24);
 }
 
 .calendar-day-head {
@@ -3118,8 +3272,28 @@ tr:last-child td {
 }
 
 .calendar-booking {
+  border: 1px solid #cbd5d1;
+  background: #eef1f0;
+  color: #334155;
+}
+
+.calendar-booking.accepted {
+  border-color: transparent;
   background: var(--team-color, #2563eb);
   color: var(--white);
+}
+
+.calendar-booking.needs-decision {
+  animation: bookingPulse 1.45s ease-in-out infinite;
+}
+
+@keyframes bookingPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 106, 0, 0.34);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 106, 0, 0.18);
+  }
 }
 
 .calendar-booking strong,
@@ -3137,9 +3311,183 @@ tr:last-child td {
 }
 
 .calendar-block {
-  border: 1px solid rgba(198, 40, 40, 0.16);
-  background: #ffe8e8;
-  color: #8a1f1f;
+  border: 1px solid #cbd5d1;
+  background: #eef1f0;
+  color: #475569;
+}
+
+.calendar-block-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.48);
+  display: grid;
+  place-items: center;
+}
+
+.calendar-block-modal {
+  width: min(980px, 100%);
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--cream);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-block-modal .calendar-block-form {
+  order: -1;
+}
+
+.calendar-grid.block-picker .calendar-day {
+  min-height: 150px;
+}
+
+.calendar-block-form {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  background: var(--white);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px 100px minmax(0, 1fr) auto auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.calendar-block-hint {
+  border: 1px dashed rgba(255, 106, 0, 0.36);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: #fff7ed;
+  color: #5b2600;
+  font-size: 12px;
+}
+
+.calendar-block-form h3 {
+  margin: 0 0 2px;
+  color: var(--forest);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.calendar-block-form span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calendar-block-form input[type="time"],
+.calendar-block-form input[type="text"],
+.calendar-block-form input:not([type]) {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: var(--white);
+}
+
+.mini-check {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.team-project-modal {
+  width: min(560px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.team-project-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.assign-team-modal {
+  width: min(1120px, 100%);
+  max-height: min(90vh, 860px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.assign-team-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.assign-team-card {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--team-color, #2563eb);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--white);
+  display: grid;
+  gap: 8px;
+}
+
+.assign-days {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.assign-day {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  background: #fffdf8;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.assign-day-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--forest);
+  font-size: 11px;
+}
+
+.assign-day small,
+.assign-day em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.assign-busy-list {
+  display: grid;
+  gap: 4px;
+}
+
+.busy {
+  border-radius: 5px;
+  padding: 4px 5px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.busy.project {
+  border-left: 3px solid var(--team-color, #2563eb);
+  background: #eef1f0;
+  color: #17221b;
+}
+
+.busy.block {
+  background: #eef1f0;
+  color: #475569;
 }
 
 .member-list {
@@ -3214,6 +3562,7 @@ tr:last-child td {
   border-radius: 8px;
   padding: 16px;
   background: var(--forest);
+  border-left: 5px solid var(--team-color, #2563eb);
   color: var(--white);
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr);
@@ -3221,10 +3570,17 @@ tr:last-child td {
   align-items: center;
 }
 
+.team-portal-header > div {
+  min-width: 0;
+  text-align: right;
+  justify-self: end;
+}
+
 .team-portal-logo {
   width: 176px;
   max-height: 82px;
   object-fit: contain;
+  justify-self: start;
 }
 
 .team-portal-header .eyebrow,
@@ -3245,13 +3601,6 @@ tr:last-child td {
 
 .team-calendar-portal {
   margin-top: 0;
-}
-
-.team-calendar-block-manager {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  display: grid;
-  gap: 8px;
 }
 
 /* Web, tablet and mobile hardening */
@@ -3888,8 +4237,20 @@ canvas {
   .availability-row,
   .block-time-row,
   .calendar-grid,
+  .calendar-block-form,
+  .team-project-modal-grid,
+  .assign-days,
+  .pipeline-stage-tabs,
   .team-lines.dense {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline-record-head {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-status-card {
+    min-width: 0;
   }
 
   .notification-card {
@@ -3945,13 +4306,30 @@ canvas {
     padding: 12px;
   }
 
-  .team-portal-header,
   .team-portal-grid {
     grid-template-columns: 1fr;
   }
 
+  .team-portal-header {
+    grid-template-columns: minmax(86px, 34vw) minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
   .team-portal-logo {
-    width: 150px;
+    width: min(130px, 34vw);
+    max-height: 62px;
+  }
+
+  .team-portal-header h1 {
+    font-size: clamp(18px, 5vw, 28px);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .team-portal-header p {
+    font-size: 11px;
+    line-height: 1.25;
   }
 
   .team-line {
@@ -3964,6 +4342,14 @@ canvas {
   }
 
   .member-row {
+    grid-template-columns: 1fr;
+  }
+
+  .service-config-row {
+    grid-template-columns: 1fr;
+  }
+
+  .location-config-row {
     grid-template-columns: 1fr;
   }
 }
