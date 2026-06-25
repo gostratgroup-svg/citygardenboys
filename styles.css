@@ -1623,7 +1623,7 @@ tr:last-child td {
   font-weight: 700;
 }
 
-.nav-icon.bell-icon svg {
+.nav-icon svg {
   width: 13px;
   height: 13px;
   fill: none;
@@ -1820,6 +1820,15 @@ tr:last-child td {
   gap: 12px;
 }
 
+.ops-workspace.finance-workspace {
+  margin-top: 12px;
+}
+
+.ops-workspace.pipeline-workspace {
+  margin-top: 12px;
+  gap: 10px;
+}
+
 .ops-panel {
   padding: 14px;
 }
@@ -1829,6 +1838,80 @@ tr:last-child td {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.project-queue.finance-queue {
+  border-color: rgba(255, 106, 0, 0.24);
+  background: #fff3e9;
+}
+
+.project-queue.finance-queue .panel-head {
+  align-items: flex-start;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 106, 0, 0.18);
+}
+
+.project-queue.finance-queue .panel-head h2 {
+  color: #7a3100;
+}
+
+.project-queue.finance-queue .panel-head span {
+  color: #8b5a35;
+}
+
+.project-queue.finance-queue .ops-search {
+  margin: 10px 0;
+  border-color: rgba(255, 106, 0, 0.24);
+  background: #ffffff;
+}
+
+.project-queue.finance-queue .queue-row {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.project-queue.finance-queue .queue-row.active {
+  border-color: rgba(255, 106, 0, 0.45);
+  background: #ffffff;
+}
+
+.project-queue.pipeline-queue {
+  padding: 12px;
+}
+
+.project-queue.pipeline-queue .panel-head {
+  align-items: flex-start;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.project-queue.pipeline-queue .ops-search {
+  margin: 10px 0;
+}
+
+.project-queue.pipeline-queue .queue-list {
+  gap: 6px;
+}
+
+.project-queue.pipeline-queue .queue-row {
+  min-height: 58px;
+  padding: 9px;
+}
+
+.finance-stage-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.finance-stage-tabs button {
+  min-height: 42px;
+  border-color: rgba(255, 106, 0, 0.22);
+  background: #fffaf6;
+}
+
+.finance-stage-tabs button.active {
+  border-color: rgba(255, 106, 0, 0.65);
+  background: #ffe0c7;
 }
 
 .panel-head,
@@ -2157,6 +2240,56 @@ tr:last-child td {
   gap: 8px;
 }
 
+.collapse-heading {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.collapse-heading h2 {
+  margin: 0;
+}
+
+.collapse-heading h2::before {
+  content: none;
+}
+
+.collapse-heading small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.collapse-caret {
+  width: 23px;
+  height: 23px;
+  border: 1px solid rgba(0, 75, 35, 0.18);
+  border-radius: 6px;
+  color: var(--forest);
+  background: #fffdf8;
+  display: grid;
+  place-items: center;
+  flex: 0 0 23px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.customer-project-details.collapsed {
+  padding-bottom: 12px;
+}
+
+.team-portal-info-card.collapsed {
+  padding-bottom: 12px;
+}
+
 .project-detail-compact > div {
   min-width: 0;
   border: 1px solid var(--line);
@@ -2179,6 +2312,29 @@ tr:last-child td {
 
 .verification-panel .ops-notes {
   min-height: 118px;
+  margin-top: 10px;
+}
+
+.pipeline-stage-panel {
+  padding: 16px;
+}
+
+.pipeline-stage-panel .panel-head {
+  margin-bottom: 12px;
+}
+
+.pipeline-stage-panel .control-grid,
+.pipeline-stage-panel .data-grid,
+.pipeline-stage-panel .project-detail-compact {
+  gap: 9px;
+}
+
+.pipeline-stage-panel .button-row {
+  margin-top: 12px;
+  gap: 10px;
+}
+
+.pipeline-stage-panel .ops-notes {
   margin-top: 10px;
 }
 
@@ -2570,11 +2726,12 @@ tr:last-child td {
 .pipeline-stage-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 7px;
+  margin-top: 10px;
 }
 
 .pipeline-stage-tabs button {
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 6px 8px;
@@ -3821,15 +3978,20 @@ tr:last-child td {
 }
 
 .calendar-booking.needs-decision {
+  border-color: var(--orange);
   animation: bookingPulse 1.45s ease-in-out infinite;
+}
+
+.calendar-booking.on-route {
+  border-color: var(--orange);
 }
 
 @keyframes bookingPulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 106, 0, 0.34);
+    box-shadow: 0 0 0 0 rgba(255, 106, 0, 0.62);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(255, 106, 0, 0.18);
+    box-shadow: 0 0 0 6px rgba(255, 106, 0, 0.28);
   }
 }
 
@@ -3845,6 +4007,40 @@ tr:last-child td {
 .calendar-booking strong,
 .calendar-block strong {
   font-weight: 600;
+}
+
+.truck-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  margin-right: 6px;
+  color: var(--white);
+  background: var(--orange);
+  display: inline-grid;
+  place-items: center;
+  vertical-align: -4px;
+}
+
+.truck-badge svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.truck-badge.large {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  flex: 0 0 30px;
+}
+
+.truck-badge.large svg {
+  width: 19px;
+  height: 19px;
 }
 
 .calendar-block {
@@ -3948,6 +4144,173 @@ tr:last-child td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.team-project-micro {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 9px;
+  background: #fffdf8;
+}
+
+.team-project-mainline {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+  gap: 8px;
+}
+
+.team-project-fast-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.team-project-fast-grid .data-item {
+  padding: 6px 7px;
+  background: #ffffff;
+}
+
+.team-project-fast-grid .data-item span {
+  font-size: 8px;
+}
+
+.team-project-fast-grid .data-item strong {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.team-project-micro span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.team-project-micro strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--forest);
+  font-size: 12px;
+}
+
+.team-project-micro p {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.team-project-photo-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.team-project-photo-strip img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #eef1f0;
+}
+
+.team-delay-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.team-operational-actions {
+  gap: 7px;
+}
+
+.project-map-view {
+  border: 1px solid rgba(255, 106, 0, 0.32);
+  border-radius: 7px;
+  padding: 9px;
+  background: #fff7ef;
+  display: grid;
+  gap: 8px;
+}
+
+.project-map-view > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-map-view strong {
+  display: block;
+  color: var(--forest);
+  font-size: 13px;
+}
+
+.project-map-view p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.project-map-view iframe {
+  width: 100%;
+  height: 180px;
+  border: 0;
+  border-radius: 7px;
+  background: #eef1f0;
+}
+
+.map-open-link {
+  justify-self: start;
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.project-timer {
+  border: 1px solid rgba(255, 106, 0, 0.36);
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: #fff7ef;
+  display: inline-grid;
+  gap: 2px;
+  align-content: center;
+}
+
+.project-timer span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.project-timer strong {
+  color: var(--orange);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.calendar-booking .project-timer {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.calendar-booking .project-timer span {
+  color: currentColor;
+  opacity: 0.78;
+  font-size: 8px;
+}
+
+.calendar-booking .project-timer strong {
+  color: currentColor;
+  font-size: 11px;
 }
 
 .assign-team-modal {
@@ -4084,6 +4447,25 @@ tr:last-child td {
 .micro-link:hover {
   color: var(--orange);
   border-color: rgba(255, 106, 0, 0.42);
+}
+
+.orange-link,
+.orange-text-btn {
+  color: var(--orange);
+}
+
+.text-copy-link {
+  border: 0;
+  padding: 0;
+  color: var(--orange);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.text-copy-link:hover {
+  text-decoration: underline;
 }
 
 .team-portal-shell {
@@ -4840,10 +5222,16 @@ canvas {
   .calendar-grid,
   .calendar-block-form,
   .team-project-modal-grid,
+  .team-project-mainline,
+  .team-delay-row,
   .assign-days,
   .pipeline-stage-tabs,
   .team-lines.dense {
     grid-template-columns: 1fr;
+  }
+
+  .team-project-photo-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .pipeline-record-head {

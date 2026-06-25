@@ -86,6 +86,12 @@ const pipelineStages = [
   { key: "cancelled", label: "Cancel Projects", note: "Cancelled quotes and projects." },
 ];
 
+const financeStages = [
+  { key: "verification", label: "Verification" },
+  { key: "accepted", label: "Accepted Quote" },
+  { key: "payment", label: "Payment" },
+];
+
 const defaultServiceTeams = [
   {
     id: "team-aloe",
@@ -169,11 +175,13 @@ const state = {
   officeTab: "overview",
   selectedRef: "CGG-2026-00124",
   pipelineStage: "verification",
+  financeStage: "verification",
   customerViewSection: "quote",
   photoViewer: null,
   areaViewer: null,
   editingCustomerDetails: null,
   actionTracker: null,
+  projectDetailsOpen: false,
   search: "",
   step: "start",
   projects: loadProjects(),
@@ -190,6 +198,8 @@ const state = {
   calendarBlockDate: null,
   calendarBlockForm: blankCalendarBlock(),
   teamPortalProjectRef: null,
+  teamPortalInfoOpen: false,
+  teamDelayProjectRef: null,
   assigningProjectRef: null,
   areaUnavailable: false,
   mobileMenuOpen: false,
@@ -202,6 +212,7 @@ function render() {
     app().innerHTML = renderTeamPortal(pathTeam.team, pathTeam.index);
     bindCopyActions();
     bindTeamPortal(pathTeam.index);
+    startTimerLoop();
     return;
   }
 
@@ -209,6 +220,7 @@ function render() {
   if (pathProject) {
     app().innerHTML = renderPublicProject(pathProject);
     bindPublicProject(pathProject);
+    startTimerLoop();
     return;
   }
 
@@ -220,6 +232,7 @@ function render() {
 
   app().innerHTML = renderBackOffice();
   bindOffice();
+  startTimerLoop();
 }
 
 function app() {
@@ -231,7 +244,9 @@ function renderBackOffice() {
   const settingsOnly = state.officeTab === "settings";
   const teamsOnly = state.officeTab === "teams";
   const notificationsOnly = state.officeTab === "notifications";
+  const overviewOnly = state.officeTab === "overview";
   const pipelineOnly = state.officeTab === "pipeline";
+  const financeOnly = state.officeTab === "quote";
   return `
     <main class="ops-shell ${state.mobileMenuOpen ? "menu-open" : ""}">
       <button type="button" class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open management menu" aria-expanded="${state.mobileMenuOpen ? "true" : "false"}">
@@ -246,8 +261,7 @@ function renderBackOffice() {
           ${officeTab("notifications", "Notifications")}
           ${officeTab("overview", "Overview")}
           ${officeTab("pipeline", "Pipeline")}
-          ${officeTab("quote", "Quote Control")}
-          ${officeTab("portal", "Customer Portal")}
+          ${officeTab("quote", "Finances")}
           ${officeTab("teams", "Service Teams")}
         </nav>
         <div class="ops-sidebar-footer">
@@ -293,30 +307,30 @@ function renderBackOffice() {
         ` : `
         <header class="ops-topbar">
           <div>
-            <h1>${pipelineOnly ? "Pipeline" : "Project Control"}</h1>
-            <p>${pipelineOnly ? "Move each request through the major CGG workflow stages." : "Manage quote, status, team, portal visibility and next actions from one workspace."}</p>
+            <h1>${pipelineOnly ? "Pipeline" : financeOnly ? "Finances" : "Project Control"}</h1>
+            <p>${pipelineOnly ? "Move each request through the major CGG workflow stages." : financeOnly ? "Track verification, accepted quotes and payment follow-ups." : "Manage quote, status, team, portal visibility and next actions from one workspace."}</p>
           </div>
-          <div class="ops-actions">
-            <button class="ops-btn" id="saveProject">Save Changes</button>
-            <button class="ops-btn orange" data-open-project="${project.reference}">Open Portal</button>
-          </div>
+          ${pipelineOnly || overviewOnly ? "" : `<div class="ops-actions">
+            ${financeOnly ? `<button class="ops-btn orange" data-finances-overview>Finances Overview</button>` : `<button class="ops-btn" id="saveProject">Save Changes</button><button class="ops-btn orange" data-open-project="${project.reference}">Open Portal</button>`}
+          </div>`}
         </header>
-        ${pipelineOnly ? "" : `<section class="ops-metrics">
+        ${pipelineOnly || financeOnly ? "" : `<section class="ops-metrics">
           ${metric("Open", projectsByStatus(["Request Submitted", "Estimate Generated", "Awaiting Verification", "More Photos Requested", "Site Visit Requested", "Quote Verified", "Quote Accepted", "Scheduled", "Team Assigned", "Team On Route", "In Progress"]).length)}
           ${metric("Needs Verify", countStatus("Awaiting Verification") + countStatus("Estimate Generated"))}
           ${metric("Accepted", countStatus("Quote Accepted") + countStatus("Scheduled"))}
           ${metric("In Progress", countStatus("In Progress"))}
           ${metric("Revenue", money(state.projects.reduce((sum, item) => sum + Number(item.price || 0), 0)))}
         </section>`}
-        <section class="ops-workspace">
-          <div class="ops-panel project-queue">
+        <section class="ops-workspace ${financeOnly ? "finance-workspace" : ""} ${pipelineOnly ? "pipeline-workspace" : ""}">
+          <div class="ops-panel project-queue ${financeOnly ? "finance-queue" : ""} ${pipelineOnly ? "pipeline-queue" : ""}">
             <div class="panel-head">
-              <div><h2>${pipelineOnly ? "Pipeline Stages" : "Project Queue"}</h2><span>${pipelineProjects().length} visible projects</span></div>
+              <div><h2>${pipelineOnly ? "Pipeline Stages" : financeOnly ? "Finance Queue" : "Project Queue"}</h2><span>${visibleQueueProjects().length} visible projects</span></div>
             </div>
             ${pipelineOnly ? renderPipelineStageTabs() : ""}
+            ${financeOnly ? renderFinanceStageTabs() : ""}
             <input class="ops-search" id="projectSearch" placeholder="Search customer, suburb, reference" value="${escapeHtml(state.search)}" />
             <div class="queue-list">
-              ${pipelineProjects().map(queueRow).join("") || `<div class="empty-note">No projects in this stage.</div>`}
+              ${visibleQueueProjects().map(queueRow).join("") || `<div class="empty-note">No projects in this stage.</div>`}
             </div>
           </div>
           <div class="ops-detail">
@@ -395,14 +409,19 @@ function renderCustomerProjectView(project) {
         </div>
         <div class="customer-project-side">
           <div class="status-window"><span>Status</span><strong>${escapeHtml(project.status)}</strong></div>
+          ${projectTimerBadge(project)}
         </div>
       </section>
 
-      <section class="ops-panel customer-project-details">
+      <section class="ops-panel customer-project-details ${state.projectDetailsOpen ? "open" : "collapsed"}">
         <div class="panel-head">
-          <div><h2>Project Details</h2><span>Details of the request. Final scope is confirmed once verified.</span></div>
+          <button class="collapse-heading" data-toggle-project-details>
+            <span class="collapse-caret">${state.projectDetailsOpen ? "−" : "+"}</span>
+            <span><h2>Project Details</h2><small>Details of the request. Final scope is confirmed once verified.</small></span>
+          </button>
           <button class="ops-btn light" data-open-photo-viewer="${project.reference}">See Photos (${photoCount})</button>
         </div>
+        ${state.projectDetailsOpen ? `
         <div class="project-detail-compact">
           <div>
             <span>Service</span>
@@ -429,6 +448,7 @@ function renderCustomerProjectView(project) {
             <strong>${escapeHtml(`${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`)}</strong>
           </div>
         </div>
+        ` : ""}
       </section>
 
       <section class="customer-view-tabs">
@@ -569,7 +589,7 @@ function renderProjectHistory(project) {
       </div>
       ${state.actionTracker?.reference === project.reference ? renderActionTracker(project) : ""}
       <div class="history-list">
-        ${history.slice().reverse().map(item => `<div class="${item.tone === "orange" ? "highlight" : ""}"><strong>${escapeHtml(item.action)}</strong><span>${escapeHtml(item.detail || "")}</span><small>${formatDateTime(item.at)}</small></div>`).join("")}
+        ${history.slice().reverse().map(item => `<div class="${item.tone === "orange" ? "highlight" : ""}"><strong>${escapeHtml(historyActionLabel(project, item.action))}</strong><span>${escapeHtml(item.detail || "")}</span><small>${formatDateTime(item.at)}</small></div>`).join("")}
       </div>
     </section>
   `;
@@ -746,7 +766,7 @@ function renderPipelineStagePanel(project, stage) {
 
 function renderVerificationStage(project) {
   return `
-    <section class="ops-panel verification-panel">
+    <section class="ops-panel verification-panel pipeline-stage-panel">
       <div class="panel-head"><div><h2>Verification</h2><span>Review the request, photos and quote variables before verifying.</span></div>${stageMessageButton(project.reference, "verification")}</div>
       <div class="control-grid">
         ${inputControl("Estimated Price", "price", project.price, "number")}
@@ -789,7 +809,7 @@ function renderVerificationStage(project) {
 
 function renderQuoteVerifiedStage(project) {
   return `
-    <section class="ops-panel">
+    <section class="ops-panel pipeline-stage-panel">
       <div class="panel-head"><div><h2>Quote Verified</h2><span>The quote is now with the customer for acceptance and payment.</span></div>${stageMessageButton(project.reference, "quoteVerified")}</div>
       <div class="data-grid">
         ${dataItem("Quote Amount", money(project.price))}
@@ -807,7 +827,7 @@ function renderQuoteVerifiedStage(project) {
 
 function renderTeamAllocationStage(project) {
   return `
-    <section class="ops-panel">
+    <section class="ops-panel pipeline-stage-panel">
       <div class="panel-head"><div><h2>Team Allocation</h2><span>Quote accepted. Allocate this project to a team timeslot.</span></div><div class="stage-head-actions">${stageMessageButton(project.reference, "allocation")}<button class="ops-btn orange" data-open-assign-team="${project.reference}">Allocate To Team</button></div></div>
       <div class="data-grid">
         ${dataItem("Project Created", project.projectCreated ? "Yes" : "Pending")}
@@ -821,7 +841,7 @@ function renderTeamAllocationStage(project) {
 
 function renderUpcomingStage(project) {
   return `
-    <section class="ops-panel">
+    <section class="ops-panel pipeline-stage-panel">
       <div class="panel-head"><div><h2>Upcoming Project</h2><span>Allocated to a team and visible on their Team Link.</span></div>${stageMessageButton(project.reference, "scheduled")}</div>
       <div class="data-grid">
         ${dataItem("Team", project.team || "Unassigned")}
@@ -840,7 +860,7 @@ function renderUpcomingStage(project) {
 
 function renderProjectReviewStage(project) {
   return `
-    <section class="ops-panel">
+    <section class="ops-panel pipeline-stage-panel">
       <div class="panel-head"><div><h2>Project Review</h2><span>Service team has completed the work. Review quality and collect customer feedback.</span></div>${stageMessageButton(project.reference, "review")}</div>
       <textarea class="ops-notes" data-project-field="reviewNotes" placeholder="Completion summary, customer feedback and internal review notes.">${escapeHtml(project.reviewNotes || "")}</textarea>
       <div class="button-row"><button class="ops-btn orange" data-set-status="Completed">Complete Project</button><button class="ops-btn light" data-set-status="Cancelled">Cancel Project</button></div>
@@ -849,11 +869,11 @@ function renderProjectReviewStage(project) {
 }
 
 function renderCompletedStage(project) {
-  return `<section class="ops-panel"><div class="panel-head"><div><h2>Completed Projects</h2><span>All steps have been completed.</span></div>${stageMessageButton(project.reference, "completed")}</div><div class="data-grid">${dataItem("Completed", project.completedAt || "Completed")}${dataItem("Final Status", project.status)}</div></section>`;
+  return `<section class="ops-panel pipeline-stage-panel"><div class="panel-head"><div><h2>Completed Projects</h2><span>All steps have been completed.</span></div>${stageMessageButton(project.reference, "completed")}</div><div class="data-grid">${dataItem("Completed", project.completedAt || "Completed")}${dataItem("Final Status", project.status)}</div></section>`;
 }
 
 function renderCancelledStage(project) {
-  return `<section class="ops-panel"><div class="panel-head"><div><h2>Cancel Projects</h2><span>This quote or project has been cancelled.</span></div>${stageMessageButton(project.reference, "cancelled")}</div><div class="data-grid">${dataItem("Cancelled", project.cancelledAt || "Cancelled")}${dataItem("Final Status", project.status)}</div></section>`;
+  return `<section class="ops-panel pipeline-stage-panel"><div class="panel-head"><div><h2>Cancel Projects</h2><span>This quote or project has been cancelled.</span></div>${stageMessageButton(project.reference, "cancelled")}</div><div class="data-grid">${dataItem("Cancelled", project.cancelledAt || "Cancelled")}${dataItem("Final Status", project.status)}</div></section>`;
 }
 
 function renderQuoteControl(project) {
@@ -929,36 +949,6 @@ function renderAssignDay(team, teamIndex, date, project) {
       </div>
       ${slot ? `<button class="ops-btn light" data-assign-project-slot="${teamIndex}|${key}|${slot.start}">Allocate ${slot.start}</button>` : `<em>No fitting slot</em>`}
     </div>
-  `;
-}
-
-function renderPortalControl(project) {
-  return `
-    <section class="ops-panel">
-      <div class="record-head">
-        <div>
-          <span class="eyebrow">Public Customer URL</span>
-          <h2>/project/${project.reference}</h2>
-          <p>No login required. The customer sees status, quote, photos, payment placeholder and updates.</p>
-        </div>
-        <button class="ops-btn orange" data-open-project="${project.reference}">Open</button>
-      </div>
-      <div class="portal-preview">
-        <div class="portal-mini-top">
-          <span class="status-pill">${project.status}</span>
-          <strong>${project.reference}</strong>
-        </div>
-        <div class="quote-total"><span>Quote amount</span><strong>${money(project.price)}</strong></div>
-        ${renderTimeline(statuses.indexOf(project.status), statuses)}
-      </div>
-    </section>
-    <section class="ops-panel">
-      <div class="panel-head"><div><h2>Customer Updates</h2><span>Short, reassuring messages</span></div></div>
-      <div class="updates-list">
-        <div><strong>Project created</strong><p>Your estimate and project record have been generated.</p></div>
-        <div><strong>Next update</strong><p>We verify your photos and confirm scheduling.</p></div>
-      </div>
-    </section>
   `;
 }
 
@@ -1205,7 +1195,7 @@ function renderTeamSummaryCard(team, index) {
     <article class="ops-panel team-card" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <div class="panel-head">
         <div><h2>${escapeHtml(team.name || `Team ${index + 1}`)}</h2><span>${escapeHtml(team.mainMember || "No owner set")}</span></div>
-        <button class="micro-link" data-copy-team-link="${teamPath(team)}">Team Link</button>
+        <button class="micro-link orange-link" data-copy-team-link="${teamPath(team)}">Team Link</button>
       </div>
       <div class="team-card-section">
         <strong>Today's Projects</strong>
@@ -1243,7 +1233,7 @@ function renderTeamFullView(index) {
         </div>
         <div class="button-row team-view-actions">
           <button class="icon-action-btn" data-report-manager title="Reports" aria-label="Reports">${reportIcon()}</button>
-          <button class="ops-btn light" data-copy-team-link="${teamPath(team)}">Team Link</button>
+          <button class="ops-btn light orange-text-btn" data-copy-team-link="${teamPath(team)}">Team Link</button>
           <button class="ops-btn orange" data-edit-team="${index}">Edit Team</button>
         </div>
         ${servicePills(serviceAbility)}
@@ -1464,10 +1454,12 @@ function renderCalendarDay(team, date, canBlock = false) {
 
 function calendarBooking(segment) {
   const { project, start, end, hours, index, total } = segment;
+  const onRoute = isProjectOnRoute(project);
   return `
-    <button class="calendar-booking ${project.teamAccepted ? "accepted" : "needs-decision"}" data-open-team-project="${project.reference}">
-      <strong>${escapeHtml(projectName(project))}</strong>
+    <button class="calendar-booking ${project.teamAccepted ? "accepted" : "needs-decision"} ${onRoute ? "on-route" : ""}" data-open-team-project="${project.reference}">
+      <strong>${onRoute ? `<span class="truck-badge">${truckIcon()}</span>` : ""}${escapeHtml(projectName(project))}</strong>
       <span>${start} - ${end} · ${hours}h${total > 1 ? ` · Day ${index + 1}/${total}` : ""} · ${project.customer.firstName}</span>
+      ${projectTimerBadge(project, "small")}
     </button>
   `;
 }
@@ -1558,6 +1550,7 @@ function renderTeamPortal(team, index) {
   const serviceAreas = team.serviceAreasList?.length ? team.serviceAreasList : String(team.serviceAreas || "").split(",").map(item => item.trim()).filter(Boolean);
   const members = formattedTeamMembers(team);
   const selectedProject = state.projects.find(project => project.reference === state.teamPortalProjectRef && project.team === team.name);
+  const mediaProject = state.projects.find(project => project.reference === state.areaViewer?.reference || project.reference === state.photoViewer?.reference);
   return `
     <main class="team-portal-shell" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
       <section class="team-portal-header">
@@ -1569,26 +1562,40 @@ function renderTeamPortal(team, index) {
         </div>
       </section>
       <section class="team-portal-grid team-portal-info-only">
-        <article class="ops-panel team-full" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
-          <div class="panel-head"><div><h2>Team Info</h2><span>Details visible to this team owner</span></div><span class="status-pill">${current.length} current</span></div>
+        <article class="ops-panel team-full team-portal-info-card ${state.teamPortalInfoOpen ? "open" : "collapsed"}" style="--team-color: ${escapeHtml(team.color || teamColorOptions[0].value)}">
+          <div class="panel-head">
+            <button class="collapse-heading" data-toggle-team-portal-info>
+              <span class="collapse-caret">${state.teamPortalInfoOpen ? "−" : "+"}</span>
+              <span><h2>Team Info</h2><small>Details visible to this team owner</small></span>
+            </button>
+            <span class="status-pill">${current.length} current</span>
+          </div>
+          ${state.teamPortalInfoOpen ? `
           <div class="team-lines dense">
             ${teamLine("Owner", team.mainMember || "Not set")}
             ${teamLine("Contact Number", phoneCopyButton(team.ownerContact || "Not set"), true)}
             ${teamMembersLine("Team Members", team, members.join(", ") || "Not set")}
             ${teamLine("Service Ability", serviceAbility.join(", ") || "Not set")}
             ${teamLine("Service Areas", serviceAreas.join(", ") || "Not set")}
-            ${teamLine("Team Link", teamPath(team))}
+            ${teamLinkLine("Team Link", teamPath(team))}
           </div>
+          ` : ""}
         </article>
       </section>
       ${renderTeamCalendar(team, { portal: true, teamIndex: index })}
       ${selectedProject ? renderTeamProjectDecisionModal(selectedProject) : ""}
+      ${mediaProject && state.areaViewer?.reference === mediaProject.reference ? renderAreaViewer(mediaProject) : ""}
+      ${mediaProject && state.photoViewer?.reference === mediaProject.reference ? renderPhotoViewer(mediaProject) : ""}
       <div class="toast" id="toast"></div>
     </main>
   `;
 }
 
 function renderTeamProjectDecisionModal(project) {
+  const accepted = Boolean(project.teamAccepted || project.teamDecision === "Accepted");
+  const delayOpen = state.teamDelayProjectRef === project.reference;
+  const onRoute = isProjectOnRoute(project);
+  const photos = project.areas.flatMap(area => area.photos.map(photo => ({ ...photo, area: area.name }))).slice(0, 6);
   return `
     <div class="calendar-block-overlay">
       <section class="team-project-modal ops-panel">
@@ -1596,22 +1603,58 @@ function renderTeamProjectDecisionModal(project) {
           <div><h2>${escapeHtml(projectName(project))}</h2><span>${escapeHtml(project.reference)} · ${escapeHtml(project.status)}</span></div>
           <button class="ops-btn light" data-close-team-project>Close</button>
         </div>
-        <div class="team-project-modal-grid">
+        ${accepted ? `<div class="team-project-micro">
+          <div class="team-project-mainline">
+            <div>
+              <span>Project Details</span>
+              <strong>${escapeHtml(project.selectedServices.join(", ") || "Garden clean-up")}</strong>
+              <p>${escapeHtml(project.areas.map(area => `${area.name}: ${area.notes}`).join(" | ") || "No project notes supplied.")}</p>
+            </div>
+            <div class="team-project-fast-grid">
+              ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
+              ${dataItem("Cell", project.customer.cell || "Not supplied")}
+              ${areaLinksDataItem(project)}
+              ${dataItem("Address", fullAddress(project))}
+              ${dataItem("Date", project.scheduledDate || "Not scheduled")}
+              ${dataItem("Time", project.scheduledTime || "09:00")}
+              ${dataItem("Duration", `${projectDurationHours(project)} hours`)}
+              ${dataItem("Quote", money(project.price))}
+            </div>
+          </div>
+          ${projectTimerBadge(project)}
+          <div class="team-project-photo-strip">
+            ${photos.length ? photos.map(photo => `<img src="${photo.src}" alt="${escapeHtml(photo.name || photo.area || "Project photo")}" />`).join("") : `<span class="empty-note">No photos uploaded.</span>`}
+          </div>
+        </div>` : `<div class="team-project-modal-grid">
           ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
           ${dataItem("Cell", project.customer.cell || "Not supplied")}
-          ${dataItem("Area", project.property.suburb || project.property.city || "Not supplied")}
+          ${areaLinksDataItem(project)}
           ${dataItem("Address", fullAddress(project))}
           ${dataItem("Date", project.scheduledDate || "Not scheduled")}
           ${dataItem("Time", project.scheduledTime || "09:00")}
           ${dataItem("Duration", `${projectDurationHours(project)} hours`)}
           ${dataItem("Quote", money(project.price))}
-        </div>
-        <label class="field full"><span class="field-label">Reject Reason</span><select data-team-project-reject-reason><option value="">Choose reason</option><option>Team unavailable</option><option>Area too far</option><option>Insufficient time allocated</option><option>Equipment unavailable</option><option>Other</option></select></label>
-        <div class="button-row">
-          <button class="ops-btn orange" data-team-project-action="accept" data-team-project-ref="${project.reference}" ${project.teamAccepted ? "disabled" : ""}>${project.teamAccepted ? "Accepted" : "Accept Project"}</button>
-          <button class="ops-btn light" data-team-project-action="move" data-team-project-ref="${project.reference}">Move Request</button>
-          <button class="ops-btn light" data-team-project-action="reject" data-team-project-ref="${project.reference}">Reject</button>
-        </div>
+        </div>`}
+        ${accepted && onRoute ? renderProjectMapView(project, "team") : ""}
+        ${accepted ? `
+          ${delayOpen ? `<div class="team-delay-row">
+            <label class="field"><span class="field-label">Delay Reason</span><select data-team-project-delay-reason><option value="">Choose reason</option><option>Traffic delay</option><option>Weather delay</option><option>Previous job running late</option><option>Equipment issue</option><option>Customer access issue</option><option>Other</option></select></label>
+            <label class="field"><span class="field-label">New Timeline</span><select data-team-project-delay-time><option value="">Choose time</option><option>15 minutes</option><option>30 minutes</option><option>45 minutes</option><option>1 hour</option><option>2 hours</option><option>Need to reschedule</option></select></label>
+          </div>` : ""}
+          <div class="button-row team-operational-actions">
+            ${!project.startedAt ? `<button class="ops-btn orange" data-team-project-action="${onRoute ? "arrived" : "onroute"}" data-team-project-ref="${project.reference}">${onRoute ? "Arrived" : "On Route"}</button>` : ""}
+            <button class="ops-btn light" data-team-project-action="finished" data-team-project-ref="${project.reference}">Finished</button>
+            <button class="ops-btn light" data-team-project-action="delayed" data-team-project-ref="${project.reference}">${delayOpen ? "Save Delay" : "Delayed"}</button>
+            <button class="ops-btn light" data-team-project-action="move" data-team-project-ref="${project.reference}">Move Request</button>
+          </div>
+        ` : `
+          <label class="field full"><span class="field-label">Reject Reason</span><select data-team-project-reject-reason><option value="">Choose reason</option><option>Team unavailable</option><option>Area too far</option><option>Insufficient time allocated</option><option>Equipment unavailable</option><option>Other</option></select></label>
+          <div class="button-row">
+            <button class="ops-btn orange" data-team-project-action="accept" data-team-project-ref="${project.reference}">Accept Project</button>
+            <button class="ops-btn light" data-team-project-action="move" data-team-project-ref="${project.reference}">Move Request</button>
+            <button class="ops-btn light" data-team-project-action="reject" data-team-project-ref="${project.reference}">Reject</button>
+          </div>
+        `}
       </section>
     </div>
   `;
@@ -1797,6 +1840,7 @@ function quoteLogo(label) {
 
 function renderPublicProject(project) {
   const verified = project.status === "Quote Verified";
+  const onRoute = isProjectOnRoute(project);
   return `
     <main class="public-shell">
       <section class="public-header">
@@ -1808,7 +1852,9 @@ function renderPublicProject(project) {
           <span class="eyebrow">Project Reference</span>
           <h1>${project.reference}</h1>
           <div class="quote-total"><span>Quote amount</span><strong>${money(project.price)}</strong></div>
+          ${projectTimerBadge(project)}
           ${verified ? `<div class="verified-box"><strong>Your Quote Has Been Verified</strong><p>You can accept the quote, request changes, or ask for a site visit.</p><div class="button-row"><button class="ops-btn orange" data-public-action="Quote accepted">Accept Quote</button><button class="ops-btn light" data-public-action="Change request sent">Request Changes</button><button class="ops-btn light" data-public-action="Site visit requested">Request Site Visit</button></div></div>` : `<div class="verified-box muted"><strong>${project.status}</strong><p>Your estimate is in the CGG tracking system. We will verify the photos and details before scheduling.</p></div>`}
+          ${onRoute ? renderProjectMapView(project, "customer") : ""}
           ${renderTimeline(statuses.indexOf(project.status), statuses)}
         </div>
         <div class="ops-panel">${publicSection("Customer", [
@@ -1866,11 +1912,49 @@ function renderCustomerDocuments(project) {
   `;
 }
 
+function projectTimerBadge(project, size = "") {
+  if (!project.startedAt || project.finishedAt) return "";
+  return `<div class="project-timer ${size}" data-live-timer="${escapeHtml(project.startedAt)}"><span>Clock</span><strong>${escapeHtml(formatElapsed(project.startedAt))}</strong></div>`;
+}
+
+function renderProjectMapView(project, audience) {
+  const mapsUrl = projectMapUrl(project);
+  const embedUrl = projectMapEmbedUrl(project);
+  const heading = audience === "customer" ? "Our team is on the way" : "Maps View";
+  const note = audience === "customer"
+    ? "City Garden Guys is currently travelling to your property."
+    : "Open maps for routing to the customer location.";
+  return `
+    <section class="project-map-view">
+      <div>
+        <span class="truck-badge large">${truckIcon()}</span>
+        <div><strong>${heading}</strong><p>${note}</p></div>
+      </div>
+      <iframe src="${escapeHtml(embedUrl)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Project location map"></iframe>
+      <a class="map-open-link" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer">Open Maps</a>
+    </section>
+  `;
+}
+
+function projectMapUrl(project) {
+  const supplied = String(project.property?.mapsLink || "").trim();
+  if (supplied) return supplied;
+  return `https://maps.google.com/?q=${encodeURIComponent(fullAddress(project))}`;
+}
+
+function projectMapEmbedUrl(project) {
+  const supplied = String(project.property?.mapsLink || "").trim();
+  const match = supplied.match(/[?&]q=([^&]+)/);
+  const query = match ? decodeURIComponent(match[1]) : fullAddress(project);
+  return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
+}
+
 function bindOffice() {
   document.querySelectorAll("[data-office-tab]").forEach(button => button.addEventListener("click", () => {
     state.officeTab = button.dataset.officeTab;
     state.mobileMenuOpen = false;
     if (state.officeTab === "pipeline") syncSelectedProjectToPipelineStage();
+    if (state.officeTab === "quote") syncSelectedProjectToFinanceStage();
     render();
   }));
   document.getElementById("mobileMenuToggle")?.addEventListener("click", () => {
@@ -1888,6 +1972,10 @@ function bindOffice() {
   }));
   document.querySelectorAll("[data-customer-section]").forEach(button => button.addEventListener("click", () => {
     state.customerViewSection = button.dataset.customerSection;
+    render();
+  }));
+  document.querySelectorAll("[data-toggle-project-details]").forEach(button => button.addEventListener("click", () => {
+    state.projectDetailsOpen = !state.projectDetailsOpen;
     render();
   }));
   document.querySelectorAll("[data-open-photo-viewer]").forEach(button => button.addEventListener("click", () => {
@@ -1948,6 +2036,15 @@ function bindOffice() {
     if (first) state.selectedRef = first.reference;
     render();
   }));
+  document.querySelectorAll("[data-finance-stage-tab]").forEach(button => button.addEventListener("click", () => {
+    state.financeStage = button.dataset.financeStageTab;
+    const first = financeProjects()[0];
+    if (first) state.selectedRef = first.reference;
+    render();
+  }));
+  document.querySelectorAll("[data-finances-overview]").forEach(button => button.addEventListener("click", () => {
+    showToast("Finances Overview coming next.");
+  }));
   document.querySelectorAll("[data-open-notification]").forEach(button => button.addEventListener("click", () => {
     const project = state.projects.find(item => item.reference === button.dataset.openNotification);
     if (project && ["Request Submitted", "Estimate Generated"].includes(project.status)) applyProjectStatus(project, "Awaiting Verification");
@@ -1965,8 +2062,18 @@ function bindOffice() {
     render();
   }));
   document.getElementById("projectSearch")?.addEventListener("input", event => {
+    const cursor = event.target.selectionStart || 0;
     state.search = event.target.value;
+    const visible = visibleQueueProjects();
+    if (visible.length && !visible.some(project => project.reference === state.selectedRef)) {
+      state.selectedRef = visible[0].reference;
+    }
     render();
+    const search = document.getElementById("projectSearch");
+    if (search) {
+      search.focus();
+      search.setSelectionRange(cursor, cursor);
+    }
   });
   document.querySelectorAll("[data-project-field]").forEach(field => field.addEventListener("input", updateProjectField));
   document.querySelectorAll("[data-edit-customer-details]").forEach(button => button.addEventListener("click", () => {
@@ -2394,6 +2501,11 @@ function bindTeamPortal(teamIndex) {
   bindCopyActions();
   bindCalendarControls();
   bindBlockTimeControls();
+  bindMediaViewers();
+  document.querySelectorAll("[data-toggle-team-portal-info]").forEach(button => button.addEventListener("click", () => {
+    state.teamPortalInfoOpen = !state.teamPortalInfoOpen;
+    render();
+  }));
   document.querySelectorAll("[data-open-team-project]").forEach(button => button.addEventListener("click", event => {
     event.preventDefault();
     state.teamPortalProjectRef = button.dataset.openTeamProject;
@@ -2401,23 +2513,61 @@ function bindTeamPortal(teamIndex) {
   }));
   document.querySelectorAll("[data-close-team-project]").forEach(button => button.addEventListener("click", () => {
     state.teamPortalProjectRef = null;
+    state.teamDelayProjectRef = null;
     render();
   }));
   document.querySelectorAll("[data-team-project-action]").forEach(button => button.addEventListener("click", () => {
     const project = state.projects.find(item => item.reference === button.dataset.teamProjectRef);
     if (!project) return;
+    let keepModalOpen = false;
     if (button.dataset.teamProjectAction === "accept") {
       project.teamAccepted = true;
       project.teamDecision = "Accepted";
       if (project.status === "Scheduled") project.status = "Team Assigned";
-      addProjectHistory(project, project.team || "Team", "Accepted allocated project.");
+      addProjectHistory(project, project.team || "Team", "Accepted allocated project.", "orange");
       showToast("Project accepted.");
     }
     if (button.dataset.teamProjectAction === "move") {
       project.teamDecision = "Move Requested";
       project.teamDecisionNote = "Team requested a new time.";
-      addProjectHistory(project, project.team || "Team", "Requested a new time.");
+      addProjectHistory(project, project.team || "Team", "Requested a new time.", "orange");
       showToast("Move request sent to admin.");
+    }
+    if (button.dataset.teamProjectAction === "onroute") {
+      project.status = "Team On Route";
+      project.onRouteAt = new Date().toISOString();
+      addProjectHistory(project, project.team || "Team", "Marked team on route.", "orange");
+      showToast("On route status saved.");
+      keepModalOpen = true;
+    }
+    if (button.dataset.teamProjectAction === "arrived") {
+      project.status = "In Progress";
+      project.arrivedAt = new Date().toISOString();
+      project.startedAt = project.startedAt || project.arrivedAt;
+      addProjectHistory(project, project.team || "Team", "Arrived on site. Project timer started.", "orange");
+      showToast("Arrived. Project timer started.");
+    }
+    if (button.dataset.teamProjectAction === "finished") {
+      promptCompletionPhotos(project);
+      return;
+    }
+    if (button.dataset.teamProjectAction === "delayed") {
+      if (state.teamDelayProjectRef !== project.reference) {
+        state.teamDelayProjectRef = project.reference;
+        render();
+        return;
+      }
+      const reason = document.querySelector("[data-team-project-delay-reason]")?.value;
+      const timeline = document.querySelector("[data-team-project-delay-time]")?.value;
+      if (!reason || !timeline) {
+        showToast("Choose a delay reason and timeline.");
+        return;
+      }
+      project.teamDecision = "Delayed";
+      project.teamDecisionNote = `${reason} · ${timeline}`;
+      addProjectHistory(project, project.team || "Team", `Delayed: ${reason} · ${timeline}`, "orange");
+      showToast("Delay update saved.");
+      state.teamDelayProjectRef = null;
     }
     if (button.dataset.teamProjectAction === "reject") {
       const reason = document.querySelector("[data-team-project-reject-reason]")?.value;
@@ -2427,13 +2577,96 @@ function bindTeamPortal(teamIndex) {
       }
       project.teamDecision = "Rejected";
       project.teamDecisionNote = reason;
-      addProjectHistory(project, project.team || "Team", `Rejected project: ${reason}`);
+      addProjectHistory(project, project.team || "Team", `Rejected project: ${reason}`, "orange");
       showToast("Project rejected and sent to admin.");
     }
     saveAll();
-    state.teamPortalProjectRef = null;
+    if (!keepModalOpen) state.teamPortalProjectRef = null;
+    state.teamDelayProjectRef = null;
     render();
   }));
+}
+
+function bindMediaViewers() {
+  document.querySelectorAll("[data-open-area-viewer]").forEach(button => button.addEventListener("click", () => {
+    const [reference, index] = button.dataset.openAreaViewer.split(":");
+    state.areaViewer = { reference, index: Number(index) };
+    render();
+  }));
+  document.querySelectorAll("[data-close-area-viewer]").forEach(button => button.addEventListener("click", () => {
+    state.areaViewer = null;
+    render();
+  }));
+  document.querySelectorAll("[data-open-area-photo]").forEach(button => button.addEventListener("click", () => {
+    const [reference, areaIndex, photoIndex] = button.dataset.openAreaPhoto.split(":").map((value, index) => index === 0 ? value : Number(value));
+    const project = state.projects.find(item => item.reference === reference);
+    const globalIndex = project ? project.areas.slice(0, areaIndex).reduce((sum, area) => sum + area.photos.length, 0) + photoIndex : 0;
+    state.photoViewer = { reference, index: globalIndex, zoom: 1 };
+    render();
+  }));
+  document.querySelectorAll("[data-close-photo-viewer]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer = null;
+    render();
+  }));
+  document.querySelectorAll("[data-photo-prev]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === state.photoViewer?.reference);
+    const count = project?.areas.reduce((sum, area) => sum + area.photos.length, 0) || 0;
+    if (!count) return;
+    state.photoViewer.index = (state.photoViewer.index - 1 + count) % count;
+    state.photoViewer.zoom = 1;
+    render();
+  }));
+  document.querySelectorAll("[data-photo-next]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === state.photoViewer?.reference);
+    const count = project?.areas.reduce((sum, area) => sum + area.photos.length, 0) || 0;
+    if (!count) return;
+    state.photoViewer.index = (state.photoViewer.index + 1) % count;
+    state.photoViewer.zoom = 1;
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-in]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = Math.min(3, (state.photoViewer.zoom || 1) + 0.25);
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-out]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = Math.max(1, (state.photoViewer.zoom || 1) - 0.25);
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-reset]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = 1;
+    render();
+  }));
+}
+
+function promptCompletionPhotos(project) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.capture = "environment";
+  input.multiple = true;
+  input.addEventListener("change", async () => {
+    const files = [...input.files].slice(0, 8);
+    if (!files.length) {
+      showToast("Please take or upload completion photos before finishing.");
+      return;
+    }
+    const photos = await readPhotos(files);
+    project.completionPhotos = [...(project.completionPhotos || []), ...photos];
+    finishTeamProject(project);
+  }, { once: true });
+  input.click();
+}
+
+function finishTeamProject(project) {
+  project.status = "Project Review";
+  project.finishedAt = new Date().toISOString();
+  if (project.startedAt) project.actualMinutes = Math.max(1, Math.round((new Date(project.finishedAt) - new Date(project.startedAt)) / 60000));
+  addProjectHistory(project, project.team || "Team", `Finished project work${project.actualMinutes ? ` · ${project.actualMinutes} minutes` : ""}. Completion photos: ${project.completionPhotos?.length || 0}.`, "orange");
+  saveAll();
+  state.teamPortalProjectRef = null;
+  state.teamDelayProjectRef = null;
+  showToast("Completion photos saved. Project sent to review.");
+  render();
 }
 
 function bindDocumentActions() {
@@ -2648,7 +2881,7 @@ function updateCalendarBlockForm(event) {
 }
 
 function copyTeamLink(path) {
-  openNewTab(path);
+  copyText(toAbsoluteUrl(path), "Team link copied.");
 }
 
 function openNewTab(path) {
@@ -2894,8 +3127,7 @@ function navIcon(tab) {
     notifications: bellIcon(),
     overview: "⌂",
     pipeline: "▦",
-    quote: "R",
-    portal: "◉",
+    quote: moneyIcon(),
     teams: "T",
     settings: "S",
   }[tab] || "•";
@@ -2903,6 +3135,14 @@ function navIcon(tab) {
 
 function bellIcon() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>`;
+}
+
+function moneyIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+}
+
+function truckIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17H5V6h10v11h-1"/><path d="M15 9h3l3 4v4h-3"/><path d="M7 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"/><path d="M16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z"/></svg>`;
 }
 
 function metric(label, value) {
@@ -2961,6 +3201,13 @@ function dataItem(label, value) {
   return `<div class="data-item"><span>${label}</span><strong>${display}</strong></div>`;
 }
 
+function areaLinksDataItem(project) {
+  const links = project.areas?.length
+    ? project.areas.map((area, index) => `<button data-open-area-viewer="${project.reference}:${index}">${escapeHtml(area.name || `Area ${index + 1}`)}</button>`).join("")
+    : "Not supplied";
+  return `<div class="data-item area-data-item"><span>Area</span><strong><div class="area-link-row">${links}</div></strong></div>`;
+}
+
 function teamBadge(teamName) {
   if (!teamName || teamName === "Unassigned") return `<span class="team-badge muted"><span></span>Unassigned</span>`;
   const team = state.serviceTeams.find(item => item.name === teamName);
@@ -2977,7 +3224,7 @@ function teamLine(label, value, isHtml = false) {
 }
 
 function teamLinkLine(label, path) {
-  return `<div class="team-line"><span>${label}:</span><strong><a href="${escapeHtml(path)}" target="_blank" rel="noopener noreferrer">${escapeHtml(path)}</a></strong></div>`;
+  return `<div class="team-line"><span>${label}:</span><strong><button class="text-copy-link" data-copy-team-link="${escapeHtml(path)}">Team Link</button></strong></div>`;
 }
 
 function calendarIcon() {
@@ -3057,7 +3304,13 @@ function selectedProject() {
 
 function addProjectHistory(project, action, detail = "", tone = "") {
   project.history = project.history || [];
-  project.history.push({ at: new Date().toISOString(), action, detail, tone });
+  project.history.push({ at: new Date().toISOString(), action: historyActionLabel(project, action), detail, tone });
+}
+
+function historyActionLabel(project, action) {
+  if (action !== "Customer") return action || "Back Office";
+  const name = `${project.customer?.firstName || ""} ${project.customer?.lastName || ""}`.trim();
+  return name ? `Customer - ${name}` : "Customer";
 }
 
 function formatDateTime(value) {
@@ -3095,11 +3348,21 @@ function pipelineStageForProject(project) {
   return "verification";
 }
 
+function isProjectOnRoute(project) {
+  return project.status === "Team On Route";
+}
+
 function syncSelectedProjectToPipelineStage() {
   const selected = selectedProject();
   state.pipelineStage = pipelineStageForProject(selected);
   if (pipelineProjects().some(project => project.reference === state.selectedRef)) return;
   const first = pipelineProjects()[0];
+  if (first) state.selectedRef = first.reference;
+}
+
+function syncSelectedProjectToFinanceStage() {
+  if (financeProjects().some(project => project.reference === state.selectedRef)) return;
+  const first = financeProjects()[0];
   if (first) state.selectedRef = first.reference;
 }
 
@@ -3121,13 +3384,49 @@ function assignProjectToTeam(reference, teamIndex, date, time) {
 }
 
 function filteredProjects() {
-  const term = state.search.toLowerCase();
-  return state.projects.filter(project => [project.reference, project.status, project.customer.firstName, project.customer.lastName, project.property.suburb].join(" ").toLowerCase().includes(term));
+  const term = state.search.trim().toLowerCase();
+  if (!term) return state.projects;
+  const digits = term.replace(/\D/g, "");
+  return state.projects.filter(project => {
+    const cell = String(project.customer?.cell || "");
+    const cellDigits = cell.replace(/\D/g, "");
+    if (digits && cellDigits.includes(digits)) return true;
+    return [
+      cell,
+      project.reference,
+      project.status,
+      project.customer?.firstName,
+      project.customer?.lastName,
+      project.customer?.email,
+      project.property?.street,
+      project.property?.suburb,
+      project.property?.city,
+      ...(project.selectedServices || []),
+    ].join(" ").toLowerCase().includes(term);
+  });
 }
 
 function pipelineProjects() {
   if (state.officeTab !== "pipeline") return filteredProjects();
   return filteredProjects().filter(project => pipelineStageForProject(project) === state.pipelineStage);
+}
+
+function visibleQueueProjects() {
+  if (state.officeTab === "pipeline") return pipelineProjects();
+  if (state.officeTab === "quote") return financeProjects();
+  return filteredProjects();
+}
+
+function financeStageForProject(project) {
+  const paid = project.popUploaded || project.paymentStatus === "Payment made";
+  if (["Estimate Generated", "Awaiting Verification", "More Photos Requested", "Site Visit Requested"].includes(project.status)) return "verification";
+  if (project.status === "Quote Verified") return "accepted";
+  if (project.status === "Quote Accepted" || paid) return "payment";
+  return "";
+}
+
+function financeProjects() {
+  return filteredProjects().filter(project => financeStageForProject(project) === state.financeStage);
 }
 
 function renderPipelineStageTabs() {
@@ -3136,6 +3435,17 @@ function renderPipelineStageTabs() {
       ${pipelineStages.map(stage => {
         const count = state.projects.filter(project => pipelineStageForProject(project) === stage.key).length;
         return `<button class="${state.pipelineStage === stage.key ? "active" : ""}" data-pipeline-stage-tab="${stage.key}"><span>${stage.label}</span><small>${count}</small></button>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderFinanceStageTabs() {
+  return `
+    <div class="pipeline-stage-tabs finance-stage-tabs">
+      ${financeStages.map(stage => {
+        const count = filteredProjects().filter(project => financeStageForProject(project) === stage.key).length;
+        return `<button class="${state.financeStage === stage.key ? "active" : ""}" data-finance-stage-tab="${stage.key}"><span>${stage.label}</span><small>${count}</small></button>`;
       }).join("")}
     </div>
   `;
@@ -3597,6 +3907,25 @@ function fullAddress(project) {
 
 function money(value) {
   return `R${Number(value || 0).toLocaleString("en-ZA")}`;
+}
+
+function formatElapsed(startedAt) {
+  const elapsed = Math.max(0, Date.now() - new Date(startedAt).getTime());
+  const totalSeconds = Math.floor(elapsed / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function startTimerLoop() {
+  if (window.cggTimerLoop) return;
+  window.cggTimerLoop = window.setInterval(() => {
+    document.querySelectorAll("[data-live-timer]").forEach(timer => {
+      const target = timer.querySelector("strong");
+      if (target) target.textContent = formatElapsed(timer.dataset.liveTimer);
+    });
+  }, 1000);
 }
 
 function go(path) {
