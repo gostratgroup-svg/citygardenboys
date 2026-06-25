@@ -144,6 +144,7 @@ const defaultSettings = {
     intro: "Upload a few photos, tell us what needs to be done, and receive your estimate fast.",
     buttonText: "Get My Estimate",
     defaultSource: "Internal",
+    accessNotes: ["Gate code needed", "Dogs on property", "Security estate", "Difficult access", "Limited parking", "Call on arrival"],
     links: [
       { name: "Flyer QR Code", source: "flyer-qr-code" },
       { name: "Facebook Bio", source: "facebook-bio" },
@@ -168,6 +169,11 @@ const state = {
   officeTab: "overview",
   selectedRef: "CGG-2026-00124",
   pipelineStage: "verification",
+  customerViewSection: "quote",
+  photoViewer: null,
+  areaViewer: null,
+  editingCustomerDetails: null,
+  actionTracker: null,
   search: "",
   step: "start",
   projects: loadProjects(),
@@ -340,11 +346,8 @@ function renderAreaUnavailableModal() {
 
 function renderOfficeTab(project) {
   if (state.officeTab === "notifications") return renderNotificationsControl();
-  if (state.officeTab === "pipeline") return renderPipelineControl(project);
-  if (state.officeTab === "quote") return renderQuoteControl(project);
-  if (state.officeTab === "portal") return renderPortalControl(project);
   if (state.officeTab === "settings") return renderSettingsControl();
-  return renderOverviewControl(project);
+  return renderCustomerProjectView(project);
 }
 
 function renderNotificationsControl() {
@@ -366,6 +369,272 @@ function renderNotificationsControl() {
       </div>
     </section>
   `;
+}
+
+function renderCustomerProjectView(project) {
+  const photoCount = project.areas.reduce((sum, area) => sum + area.photos.length, 0);
+  const closed = ["Completed", "Cancelled"].includes(project.status);
+  const panelStateClass = closed ? "closed" : "active";
+  return `
+    <section class="customer-project-shell">
+      <section class="customer-project-hero ${panelStateClass}">
+        <div class="customer-project-main">
+          <h2>${escapeHtml(project.reference)} - ${escapeHtml(project.customer.firstName)} ${escapeHtml(project.customer.lastName)}</h2>
+          <div class="customer-personal-details">
+            <div class="personal-details-head">
+              <span>Personal Details</span>
+              <button class="icon-action-btn tiny" data-edit-customer-details="${project.reference}" title="Edit personal details" aria-label="Edit personal details">${pencilIcon()}</button>
+            </div>
+            <p><strong>Cell:</strong> ${phoneCopyButton(project.customer.cell || "Not supplied")}</p>
+            <p><strong>Email:</strong> ${escapeHtml(project.customer.email || "Not supplied")}</p>
+            <p><strong>Preferred Contact:</strong> ${escapeHtml(project.customer.contactMethod || "Not supplied")}</p>
+            <p><strong>Address:</strong> ${escapeHtml(fullAddress(project))}</p>
+            <p><a class="customer-link-inline" href="/project/${project.reference}" target="_blank" rel="noopener noreferrer">Customer Link</a></p>
+          </div>
+          ${state.editingCustomerDetails === project.reference ? renderCustomerDetailsEditor(project) : ""}
+        </div>
+        <div class="customer-project-side">
+          <div class="status-window"><span>Status</span><strong>${escapeHtml(project.status)}</strong></div>
+        </div>
+      </section>
+
+      <section class="ops-panel customer-project-details">
+        <div class="panel-head">
+          <div><h2>Project Details</h2><span>Details of the request. Final scope is confirmed once verified.</span></div>
+          <button class="ops-btn light" data-open-photo-viewer="${project.reference}">See Photos (${photoCount})</button>
+        </div>
+        <div class="project-detail-compact">
+          <div>
+            <span>Service</span>
+            <div class="service-pill-row">${project.selectedServices.map(service => `<span>${escapeHtml(service)}</span>`).join("") || `<span>Not Sure</span>`}</div>
+          </div>
+          <div>
+            <span>Areas</span>
+            <div class="area-link-row">${project.areas.map((area, index) => `<button data-open-area-viewer="${project.reference}:${index}">${escapeHtml(area.name || `Area ${index + 1}`)}</button>`).join("") || "Not supplied"}</div>
+          </div>
+          <div>
+            <span>Projected Time</span>
+            <strong>${escapeHtml(projectedTime(project.rating.time))}</strong>
+          </div>
+          <div>
+            <span>Access Notes</span>
+            <strong>${escapeHtml(project.property.accessNotes || "None supplied")}</strong>
+          </div>
+          <div class="wide">
+            <span>Request Notes</span>
+            <strong>${escapeHtml(project.areas.map(area => `${area.name}: ${area.notes}`).join(" | ") || "None supplied")}</strong>
+          </div>
+          <div>
+            <span>Rating</span>
+            <strong>${escapeHtml(`${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`)}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="customer-view-tabs">
+        ${["quote", "payment", "project"].map(section => renderCustomerStageTab(project, section)).join("")}
+      </section>
+
+      ${renderCustomerViewSection(project)}
+      ${renderProjectHistory(project)}
+    </section>
+    ${state.photoViewer?.reference === project.reference ? renderPhotoViewer(project) : ""}
+    ${state.areaViewer?.reference === project.reference ? renderAreaViewer(project) : ""}
+  `;
+}
+
+function renderCustomerViewSection(project) {
+  if (state.customerViewSection === "payment") return renderPaymentSection(project);
+  if (state.customerViewSection === "project") return renderProjectSection(project);
+  return renderQuoteSection(project);
+}
+
+function renderCustomerStageTab(project, section) {
+  const done = {
+    quote: Boolean(project.quoteAcceptedAt || project.status === "Quote Accepted" || project.projectCreated),
+    payment: Boolean(project.popUploaded || project.paymentStatus === "Payment made"),
+    project: project.status === "Completed",
+  }[section];
+  const label = section[0].toUpperCase() + section.slice(1);
+  return `
+    <button class="${state.customerViewSection === section ? "active" : ""} ${done ? "done" : ""}" data-customer-section="${section}">
+      <span>${escapeHtml(label)}</span>
+      ${done ? `<em>✓</em>` : ""}
+    </button>
+  `;
+}
+
+function stageMessageButton(reference, stage) {
+  return `<button class="icon-action-btn tiny chat-action" data-copy-stage-message="${reference}:${stage}" title="Copy customer message" aria-label="Copy customer message">${chatIcon()}</button>`;
+}
+
+function renderCustomerDetailsEditor(project) {
+  return `
+    <section class="customer-detail-editor">
+      <div class="control-grid">
+        <label class="field"><span class="field-label">First Name</span><input value="${escapeHtml(project.customer.firstName || "")}" data-customer-detail-field="firstName" /></label>
+        <label class="field"><span class="field-label">Last Name</span><input value="${escapeHtml(project.customer.lastName || "")}" data-customer-detail-field="lastName" /></label>
+        <label class="field"><span class="field-label">Cell</span><input value="${escapeHtml(project.customer.cell || "")}" data-customer-detail-field="cell" /></label>
+        <label class="field"><span class="field-label">Email</span><input type="email" value="${escapeHtml(project.customer.email || "")}" data-customer-detail-field="email" /></label>
+        <label class="field"><span class="field-label">Preferred Contact</span><select data-customer-detail-field="contactMethod">${["WhatsApp", "Call", "Email"].map(option => `<option ${project.customer.contactMethod === option ? "selected" : ""}>${option}</option>`).join("")}</select></label>
+        <label class="field"><span class="field-label">Street</span><input value="${escapeHtml(project.property.street || "")}" data-property-detail-field="street" /></label>
+        <label class="field"><span class="field-label">Suburb</span><input value="${escapeHtml(project.property.suburb || "")}" data-property-detail-field="suburb" /></label>
+        <label class="field"><span class="field-label">City</span><input value="${escapeHtml(project.property.city || "")}" data-property-detail-field="city" /></label>
+      </div>
+      <div class="button-row">
+        <button class="ops-btn light" data-cancel-customer-details>Cancel</button>
+        <button class="ops-btn orange" data-save-customer-details="${project.reference}">Save Details</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderQuoteSection(project) {
+  const stage = pipelineStageForProject(project);
+  if (["allocation", "upcoming", "review", "completed"].includes(stage)) return renderQuoteAcceptedSummary(project);
+  if (stage === "cancelled") return renderCancelledStage(project);
+  return renderPipelineStagePanel(project, stage);
+}
+
+function renderQuoteAcceptedSummary(project) {
+  const accepted = Boolean(project.quoteAcceptedAt || project.status === "Quote Accepted" || project.projectCreated);
+  return `
+    <section class="ops-panel">
+      <div class="panel-head">
+        <div><h2>Quote Accepted</h2><span>${accepted ? "Quote accepted. Waiting for payment." : "Waiting for quote acceptance."}</span></div>
+        ${stageMessageButton(project.reference, "quoteAccepted")}
+      </div>
+      <div class="data-grid">
+        ${dataItem("Quote Amount", money(project.price))}
+        ${dataItem("Accepted", project.quoteAcceptedAt ? formatDateTime(project.quoteAcceptedAt) : "Accepted")}
+        ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
+        ${dataItem("Status", project.status)}
+      </div>
+    </section>
+  `;
+}
+
+function renderPaymentSection(project) {
+  const paid = Boolean(project.popUploaded || project.paymentStatus === "Payment made");
+  return `
+    <section class="ops-panel payment-panel">
+      <div class="panel-head">
+        <div><h2>Payment</h2><span>${paid ? "Payment made and POP received." : "Awaiting payment and POP."}</span></div>
+        ${stageMessageButton(project.reference, paid ? "paymentReceived" : "payment")}
+      </div>
+      <div class="data-grid payment-grid">
+        ${dataItem("Amount Due", money(project.price))}
+        ${dataItem("Payment Status", project.paymentStatus || "Awaiting payment")}
+        ${dataItem("Reference", project.reference)}
+        ${dataItem("POP Upload", project.popUploaded ? "Received" : "Awaiting POP")}
+      </div>
+      <div class="document-actions">
+        <button class="document-btn" data-open-document="${project.reference}:quote">${documentIcon()}<span>Quote</span></button>
+        ${paid || project.documents?.invoiceGeneratedAt ? `<button class="document-btn" data-open-document="${project.reference}:invoice">${documentIcon()}<span>Invoice</span></button>` : ""}
+      </div>
+      <div class="button-row payment-actions">
+        <button class="ops-btn orange" data-mark-payment="${project.reference}">Payment Received</button>
+        <button class="ops-btn light" data-action="POP upload placeholder">POP Upload</button>
+        <button class="ops-btn light" data-cancel-customer-rejected="${project.reference}">Cancel Quote (Customer Rejected)</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderProjectSection(project) {
+  const stage = pipelineStageForProject(project);
+  if (["verification", "quote"].includes(stage)) {
+    return `
+      <section class="ops-panel">
+        <div class="panel-head"><div><h2>Project</h2><span>The project is created after the verified quote is accepted.</span></div>${stageMessageButton(project.reference, "project")}</div>
+        <div class="data-grid">
+          ${dataItem("Project Created", project.projectCreated ? "Yes" : "Not yet")}
+          ${dataItem("Current Status", project.status)}
+          ${dataItem("Team", project.team || "Unassigned")}
+          ${dataItem("Scheduled", project.scheduledDate || "Not scheduled")}
+        </div>
+      </section>
+    `;
+  }
+  return renderPipelineStagePanel(project, stage);
+}
+
+function renderProjectHistory(project) {
+  const history = project.history?.length ? project.history : [{ at: project.createdAt || new Date().toISOString(), action: "Project created", detail: project.status }];
+  return `
+    <section class="ops-panel">
+      <div class="panel-head">
+        <div><h2>History</h2><span>Every action is tracked for clarity.</span></div>
+        <button class="ops-btn light" data-open-action-tracker="${project.reference}">Track Action</button>
+      </div>
+      ${state.actionTracker?.reference === project.reference ? renderActionTracker(project) : ""}
+      <div class="history-list">
+        ${history.slice().reverse().map(item => `<div class="${item.tone === "orange" ? "highlight" : ""}"><strong>${escapeHtml(item.action)}</strong><span>${escapeHtml(item.detail || "")}</span><small>${formatDateTime(item.at)}</small></div>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderActionTracker(project) {
+  const tracker = state.actionTracker;
+  return `
+    <section class="track-action-box">
+      <div class="control-grid">
+        <label class="field"><span class="field-label">Action Type</span><select data-track-action-field="type">${["Customer Call", "WhatsApp", "Email", "Internal Note", "Site Follow-Up", "Payment Follow-Up"].map(option => `<option ${tracker.type === option ? "selected" : ""}>${option}</option>`).join("")}</select></label>
+        <label class="field"><span class="field-label">Logged By</span><input value="${escapeHtml(tracker.actor)}" data-track-action-field="actor" /></label>
+      </div>
+      <label class="field full"><span class="field-label">Action Notes</span><textarea data-track-action-field="detail" placeholder="Example: Customer called to confirm gate code and asked for Thursday morning.">${escapeHtml(tracker.detail)}</textarea></label>
+      <div class="button-row">
+        <button class="ops-btn light" data-cancel-action-tracker>Cancel</button>
+        <button class="ops-btn orange" data-save-action-tracker="${project.reference}">Save Action</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderPhotoViewer(project) {
+  const photos = project.areas.flatMap(area => area.photos.map(photo => ({ ...photo, area: area.name })));
+  const index = Math.min(state.photoViewer.index || 0, Math.max(photos.length - 1, 0));
+  const photo = photos[index];
+  const zoom = state.photoViewer.zoom || 1;
+  return `
+    <div class="calendar-block-overlay">
+      <section class="photo-viewer-modal ops-panel">
+        <div class="panel-head"><div><h2>Project Photos</h2><span>${photos.length ? `${index + 1} of ${photos.length} · ${escapeHtml(photo.area)} · ${Math.round(zoom * 100)}%` : "No photos uploaded"}</span></div><button class="ops-btn light" data-close-photo-viewer>Close</button></div>
+        ${photo ? `<div class="photo-zoom-stage"><img src="${photo.src}" alt="${escapeHtml(photo.name)}" style="--photo-zoom:${zoom}" /></div>` : `<div class="empty-note">No photos uploaded.</div>`}
+        <div class="button-row">
+          <button class="ops-btn light" data-photo-prev>Previous</button>
+          <button class="ops-btn light" data-photo-zoom-out>Zoom -</button>
+          <button class="ops-btn light" data-photo-zoom-reset>Reset</button>
+          <button class="ops-btn light" data-photo-zoom-in>Zoom +</button>
+          <button class="ops-btn orange" data-photo-next>Next</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderAreaViewer(project) {
+  const index = Math.min(state.areaViewer.index || 0, Math.max(project.areas.length - 1, 0));
+  const area = project.areas[index];
+  return `
+    <div class="area-viewer-overlay">
+      <section class="area-viewer-modal ops-panel">
+        <div class="panel-head">
+          <div><h2>${escapeHtml(area?.name || "Project Area")}</h2><span>${area?.photos?.length || 0} photos uploaded</span></div>
+          <button class="ops-btn light" data-close-area-viewer>Close</button>
+        </div>
+        <p>${escapeHtml(area?.notes || "No notes supplied.")}</p>
+        <div class="area-viewer-photos">
+          ${area?.photos?.length ? area.photos.map((photo, photoIndex) => `<button data-open-area-photo="${project.reference}:${index}:${photoIndex}"><img src="${photo.src}" alt="${escapeHtml(photo.name)}" /></button>`).join("") : `<div class="empty-note">No photos uploaded.</div>`}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function projectedTime(rating) {
+  return { T1: "1-2 h", T2: "2-4 h", T3: "4-8 h", T4: "2 days" }[rating] || "To confirm";
 }
 
 function notificationCard(item) {
@@ -477,21 +746,36 @@ function renderPipelineStagePanel(project, stage) {
 
 function renderVerificationStage(project) {
   return `
-    <section class="ops-panel">
-      <div class="panel-head"><div><h2>Verification</h2><span>Review the request, photos and quote variables before verifying.</span></div></div>
+    <section class="ops-panel verification-panel">
+      <div class="panel-head"><div><h2>Verification</h2><span>Review the request, photos and quote variables before verifying.</span></div>${stageMessageButton(project.reference, "verification")}</div>
       <div class="control-grid">
         ${inputControl("Estimated Price", "price", project.price, "number")}
         ${selectControl("Time Rating", "time", ["T1", "T2", "T3", "T4"], project.rating.time)}
         ${selectControl("Load Rating", "load", ["L1", "L2", "L3", "L4"], project.rating.load)}
         ${selectControl("X Rating", "complexity", ["A", "B", "C", "D"], project.rating.complexity)}
       </div>
-      <div class="data-grid verification-grid">
-        ${dataItem("Service Type", project.selectedServices.join(", ") || "Not Sure")}
-        ${dataItem("Address", fullAddress(project))}
-        ${dataItem("Uploaded Areas", project.areas.length)}
-        ${dataItem("Photos", project.areas.reduce((sum, area) => sum + area.photos.length, 0))}
+      <div class="project-detail-compact verification-detail-grid">
+        <div>
+          <span>Service</span>
+          <div class="service-pill-row">${project.selectedServices.map(service => `<span>${escapeHtml(service)}</span>`).join("") || `<span>Not Sure</span>`}</div>
+        </div>
+        <div>
+          <span>Areas</span>
+          <div class="area-link-row">${project.areas.map((area, index) => `<button data-open-area-viewer="${project.reference}:${index}">${escapeHtml(area.name || `Area ${index + 1}`)}</button>`).join("") || "Not supplied"}</div>
+        </div>
+        <div>
+          <span>Projected Time</span>
+          <strong>${escapeHtml(projectedTime(project.rating.time))}</strong>
+        </div>
+        <div>
+          <span>Rating</span>
+          <strong>${escapeHtml(`${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`)}</strong>
+        </div>
+        <div class="wide">
+          <span>Request Notes</span>
+          <strong>${escapeHtml(project.areas.map(area => `${area.name}: ${area.notes}`).join(" | ") || "None supplied")}</strong>
+        </div>
       </div>
-      <div class="area-strip">${project.areas.map(areaTile).join("")}</div>
       <textarea class="ops-notes" data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "")}</textarea>
       <div class="button-row">
         <button class="ops-btn light" data-set-status="More Photos Requested">More Photos</button>
@@ -506,14 +790,14 @@ function renderVerificationStage(project) {
 function renderQuoteVerifiedStage(project) {
   return `
     <section class="ops-panel">
-      <div class="panel-head"><div><h2>Quote Verified</h2><span>The quote is now with the customer for acceptance and payment.</span></div><button class="ops-btn orange" data-open-project="${project.reference}">Open Customer Quote</button></div>
+      <div class="panel-head"><div><h2>Quote Verified</h2><span>The quote is now with the customer for acceptance and payment.</span></div>${stageMessageButton(project.reference, "quoteVerified")}</div>
       <div class="data-grid">
         ${dataItem("Quote Amount", money(project.price))}
         ${dataItem("Customer", `${project.customer.firstName} ${project.customer.lastName}`)}
         ${dataItem("Cell", project.customer.cell || "Not supplied")}
         ${dataItem("Status", project.status)}
       </div>
-      <div class="button-row">
+      <div class="button-row quote-actions">
         <button class="ops-btn orange" data-set-status="Quote Accepted">Accept Quote</button>
         <button class="ops-btn light" data-set-status="Cancelled">Cancel Quote</button>
       </div>
@@ -524,7 +808,7 @@ function renderQuoteVerifiedStage(project) {
 function renderTeamAllocationStage(project) {
   return `
     <section class="ops-panel">
-      <div class="panel-head"><div><h2>Team Allocation</h2><span>Quote accepted. Allocate this project to a team timeslot.</span></div><button class="ops-btn orange" data-open-assign-team="${project.reference}">Allocate To Team</button></div>
+      <div class="panel-head"><div><h2>Team Allocation</h2><span>Quote accepted. Allocate this project to a team timeslot.</span></div><div class="stage-head-actions">${stageMessageButton(project.reference, "allocation")}<button class="ops-btn orange" data-open-assign-team="${project.reference}">Allocate To Team</button></div></div>
       <div class="data-grid">
         ${dataItem("Project Created", project.projectCreated ? "Yes" : "Pending")}
         ${dataItem("Team", project.team || "Unassigned")}
@@ -538,14 +822,14 @@ function renderTeamAllocationStage(project) {
 function renderUpcomingStage(project) {
   return `
     <section class="ops-panel">
-      <div class="panel-head"><div><h2>Upcoming Project</h2><span>Allocated to a team and visible on their Team Link.</span></div></div>
+      <div class="panel-head"><div><h2>Upcoming Project</h2><span>Allocated to a team and visible on their Team Link.</span></div>${stageMessageButton(project.reference, "scheduled")}</div>
       <div class="data-grid">
         ${dataItem("Team", project.team || "Unassigned")}
         ${dataItem("Scheduled", `${project.scheduledDate || "No date"} ${project.scheduledTime || ""}`)}
         ${dataItem("Team Decision", project.teamDecision || "Pending")}
         ${dataItem("Team Note", project.teamDecisionNote || "None")}
       </div>
-      <div class="button-row">
+      <div class="button-row upcoming-actions">
         <button class="ops-btn light" data-open-assign-team="${project.reference}">Move Allocation</button>
         <button class="ops-btn orange" data-set-status="Project Review">Send To Review</button>
         <button class="ops-btn light" data-set-status="Cancelled">Cancel Project</button>
@@ -557,7 +841,7 @@ function renderUpcomingStage(project) {
 function renderProjectReviewStage(project) {
   return `
     <section class="ops-panel">
-      <div class="panel-head"><div><h2>Project Review</h2><span>Service team has completed the work. Review quality and collect customer feedback.</span></div></div>
+      <div class="panel-head"><div><h2>Project Review</h2><span>Service team has completed the work. Review quality and collect customer feedback.</span></div>${stageMessageButton(project.reference, "review")}</div>
       <textarea class="ops-notes" data-project-field="reviewNotes" placeholder="Completion summary, customer feedback and internal review notes.">${escapeHtml(project.reviewNotes || "")}</textarea>
       <div class="button-row"><button class="ops-btn orange" data-set-status="Completed">Complete Project</button><button class="ops-btn light" data-set-status="Cancelled">Cancel Project</button></div>
     </section>
@@ -565,11 +849,11 @@ function renderProjectReviewStage(project) {
 }
 
 function renderCompletedStage(project) {
-  return `<section class="ops-panel"><div class="panel-head"><div><h2>Completed Projects</h2><span>All steps have been completed.</span></div></div><div class="data-grid">${dataItem("Completed", project.completedAt || "Completed")}${dataItem("Final Status", project.status)}</div></section>`;
+  return `<section class="ops-panel"><div class="panel-head"><div><h2>Completed Projects</h2><span>All steps have been completed.</span></div>${stageMessageButton(project.reference, "completed")}</div><div class="data-grid">${dataItem("Completed", project.completedAt || "Completed")}${dataItem("Final Status", project.status)}</div></section>`;
 }
 
 function renderCancelledStage(project) {
-  return `<section class="ops-panel"><div class="panel-head"><div><h2>Cancel Projects</h2><span>This quote or project has been cancelled.</span></div></div><div class="data-grid">${dataItem("Cancelled", project.cancelledAt || "Cancelled")}${dataItem("Final Status", project.status)}</div></section>`;
+  return `<section class="ops-panel"><div class="panel-head"><div><h2>Cancel Projects</h2><span>This quote or project has been cancelled.</span></div>${stageMessageButton(project.reference, "cancelled")}</div><div class="data-grid">${dataItem("Cancelled", project.cancelledAt || "Cancelled")}${dataItem("Final Status", project.status)}</div></section>`;
 }
 
 function renderQuoteControl(project) {
@@ -705,6 +989,7 @@ function renderSettingsControl() {
     ${settingsSummaryCard("Quote Form", "Manage the internal quote creator and source-tracked form links", [
       ["Form Title", settings.quoteForm.title],
       ["Primary Button", settings.quoteForm.buttonText],
+      ["Access Note Options", activeAccessNoteOptions().length],
       ["Form Links", settings.quoteForm.links.length],
     ], "quoteForm")}
     ${pricingSummaryCard(settings)}
@@ -864,6 +1149,17 @@ function renderQuoteFormEditor(settings) {
           ${settingsInput("Default Source", "quoteForm", "defaultSource", settings.quoteForm.defaultSource)}
         </div>
         <label class="field full"><span class="field-label">Intro Text</span><textarea data-setting-group="quoteForm" data-setting-field="intro">${escapeHtml(settings.quoteForm.intro)}</textarea></label>
+      </section>
+      <section class="team-edit-section">
+        <div class="panel-head"><div><h2>Access Notes Options</h2><span>Tick-box options shown in the quote creator property step.</span></div><button class="ops-btn light" data-add-access-note-option>Add Option</button></div>
+        <div class="service-config-list">
+          ${activeAccessNoteOptions().map((note, index) => `
+            <div class="service-config-row">
+              <input value="${escapeHtml(note)}" data-access-note-option-index="${index}" />
+              <button class="ops-btn light" data-remove-access-note-option="${index}">Remove</button>
+            </div>
+          `).join("") || `<div class="empty-note">No access note options configured yet.</div>`}
+        </div>
       </section>
       <section class="team-edit-section">
         <div class="panel-head"><div><h2>Form Links</h2><span>Create source-specific links for QR codes, flyers and campaigns.</span></div><button class="ops-btn light" data-add-form-link>Add Form Link</button></div>
@@ -1379,6 +1675,7 @@ function renderPropertyDetails() {
   const cities = Object.keys(locations);
   const city = state.form.property.city;
   const neighbourhoods = locations[city] || [];
+  const selectedAccessNotes = selectedAccessNoteSet();
   return `
     ${stepHeader("Property Details", "Tell us where the clean-up needs to happen.")}
     <div class="control-grid">
@@ -1387,6 +1684,15 @@ function renderPropertyDetails() {
       ${formInput("street", "Street Address", state.form.property.street, "property")}
       <label class="field"><span class="field-label">Location</span><div class="location-input-row"><input value="${escapeHtml(state.form.property.mapsLink)}" data-group="property" data-field="mapsLink" placeholder="Use current location or paste a map link" /><button type="button" class="ops-btn light" id="useLocation">Use Location</button></div></label>
     </div>
+    <fieldset class="question smooth access-note-box">
+      <legend>Access Notes</legend>
+      <div class="service-grid tight">${activeAccessNoteOptions().map(note => `
+        <label class="service-chip ${selectedAccessNotes.has(note) ? "selected" : ""}">
+          <input type="checkbox" data-access-note value="${escapeHtml(note)}" ${selectedAccessNotes.has(note) ? "checked" : ""} />
+          ${escapeHtml(note)}
+        </label>`).join("")}
+      </div>
+    </fieldset>
     <label class="field full"><span class="field-label">Access Notes</span><textarea data-group="property" data-field="accessNotes" placeholder="Gate code, dogs, parking, security estate">${escapeHtml(state.form.property.accessNotes)}</textarea></label>
     ${stepActions("start", "services")}
   `;
@@ -1407,7 +1713,7 @@ function renderServiceSelection() {
 
 function renderAreaUploads() {
   return `
-    ${stepHeader("Area Uploads", "Add project areas, notes and up to 3 photos each.")}
+    ${stepHeader("Area Uploads", "Add project areas, notes and 1 to 5 photos each.")}
     <div class="areas">${state.form.areas.map(renderAreaCard).join("")}</div>
     <button class="ops-btn light full" id="addArea">Add Another Area</button>
     ${stepActions("services", "questions")}
@@ -1415,6 +1721,7 @@ function renderAreaUploads() {
 }
 
 function renderAreaCard(area, index) {
+  const photoLimitReached = area.photos.length >= 5;
   return `
     <article class="area-card smooth">
       <div class="area-head"><strong>Area ${index + 1}</strong>${state.form.areas.length > 1 ? `<button class="icon-btn" data-remove-area="${index}">×</button>` : ""}</div>
@@ -1423,14 +1730,15 @@ function renderAreaCard(area, index) {
         <div class="field">
           <span class="field-label">Photos</span>
           <div class="photo-action-row">
-            <button type="button" class="ops-btn light" data-open-photo="upload-${index}">Upload</button>
-            <button type="button" class="ops-btn light" data-open-photo="camera-${index}">Camera</button>
+            <button type="button" class="ops-btn light" data-open-photo="upload-${index}" ${photoLimitReached ? "disabled" : ""}>Upload</button>
+            <button type="button" class="ops-btn light" data-open-photo="camera-${index}" ${photoLimitReached ? "disabled" : ""}>Camera</button>
           </div>
           <input class="hidden-file" id="upload-${index}" type="file" accept="image/*" multiple data-photo-area="${index}" />
           <input class="hidden-file" id="camera-${index}" type="file" accept="image/*" capture="environment" multiple data-photo-area="${index}" />
         </div>
       </div>
       <label class="field full"><span class="field-label">Area Notes</span><textarea data-area="${index}" data-area-field="notes" placeholder="Remove branches, clear green waste, cut back overgrowth.">${escapeHtml(area.notes)}</textarea></label>
+      <small class="photo-rule ${area.photos.length ? "" : "required"}">${area.photos.length}/5 photos uploaded · minimum 1 required</small>
       <div class="thumb-row">${area.photos.length ? area.photos.map(photo => `<img src="${photo.src}" alt="${escapeHtml(photo.name)}" />`).join("") : `<span>No photos yet</span>`}</div>
     </article>
   `;
@@ -1522,6 +1830,7 @@ function renderPublicProject(project) {
           ["Reference", project.reference],
           ["Note", state.settings.banking.paymentNote],
         ])}</div>
+        <div class="ops-panel"><h2>Documents</h2>${renderCustomerDocuments(project)}</div>
         <div class="ops-panel"><h2>Updates</h2><div class="updates-list"><div><strong>Project created</strong><p>Your estimate and project record have been generated.</p></div><div><strong>Next update</strong><p>We verify your photos and confirm scheduling.</p></div></div></div>
       </section>
       <div class="toast" id="toast"></div>
@@ -1546,6 +1855,17 @@ function renderProjectSummary(project) {
   `;
 }
 
+function renderCustomerDocuments(project) {
+  const quoteAvailable = project.documents?.quoteGeneratedAt;
+  const invoiceAvailable = project.documents?.invoiceGeneratedAt;
+  return `
+    <div class="document-actions public-documents">
+      ${quoteAvailable ? `<button class="document-btn" data-open-document="${project.reference}:quote">${documentIcon()}<span>Quote</span></button>` : `<div class="empty-note">Quote document will appear once generated.</div>`}
+      ${invoiceAvailable ? `<button class="document-btn" data-open-document="${project.reference}:invoice">${documentIcon()}<span>Invoice</span></button>` : ""}
+    </div>
+  `;
+}
+
 function bindOffice() {
   document.querySelectorAll("[data-office-tab]").forEach(button => button.addEventListener("click", () => {
     state.officeTab = button.dataset.officeTab;
@@ -1564,6 +1884,62 @@ function bindOffice() {
   document.querySelectorAll("[data-select-project]").forEach(button => button.addEventListener("click", () => {
     state.selectedRef = button.dataset.selectProject;
     if (state.officeTab === "pipeline") state.pipelineStage = pipelineStageForProject(selectedProject());
+    render();
+  }));
+  document.querySelectorAll("[data-customer-section]").forEach(button => button.addEventListener("click", () => {
+    state.customerViewSection = button.dataset.customerSection;
+    render();
+  }));
+  document.querySelectorAll("[data-open-photo-viewer]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer = { reference: button.dataset.openPhotoViewer, index: 0, zoom: 1 };
+    render();
+  }));
+  document.querySelectorAll("[data-close-photo-viewer]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer = null;
+    render();
+  }));
+  document.querySelectorAll("[data-open-area-viewer]").forEach(button => button.addEventListener("click", () => {
+    const [reference, index] = button.dataset.openAreaViewer.split(":");
+    state.areaViewer = { reference, index: Number(index) };
+    render();
+  }));
+  document.querySelectorAll("[data-close-area-viewer]").forEach(button => button.addEventListener("click", () => {
+    state.areaViewer = null;
+    render();
+  }));
+  document.querySelectorAll("[data-open-area-photo]").forEach(button => button.addEventListener("click", () => {
+    const [reference, areaIndex, photoIndex] = button.dataset.openAreaPhoto.split(":").map((value, index) => index === 0 ? value : Number(value));
+    const project = state.projects.find(item => item.reference === reference);
+    const globalIndex = project ? project.areas.slice(0, areaIndex).reduce((sum, area) => sum + area.photos.length, 0) + photoIndex : 0;
+    state.photoViewer = { reference, index: globalIndex, zoom: 1 };
+    render();
+  }));
+  document.querySelectorAll("[data-photo-prev]").forEach(button => button.addEventListener("click", () => {
+    const project = selectedProject();
+    const count = project.areas.reduce((sum, area) => sum + area.photos.length, 0);
+    if (!count) return;
+    state.photoViewer.index = (state.photoViewer.index - 1 + count) % count;
+    state.photoViewer.zoom = 1;
+    render();
+  }));
+  document.querySelectorAll("[data-photo-next]").forEach(button => button.addEventListener("click", () => {
+    const project = selectedProject();
+    const count = project.areas.reduce((sum, area) => sum + area.photos.length, 0);
+    if (!count) return;
+    state.photoViewer.index = (state.photoViewer.index + 1) % count;
+    state.photoViewer.zoom = 1;
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-in]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = Math.min(3, (state.photoViewer.zoom || 1) + 0.25);
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-out]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = Math.max(1, (state.photoViewer.zoom || 1) - 0.25);
+    render();
+  }));
+  document.querySelectorAll("[data-photo-zoom-reset]").forEach(button => button.addEventListener("click", () => {
+    state.photoViewer.zoom = 1;
     render();
   }));
   document.querySelectorAll("[data-pipeline-stage-tab]").forEach(button => button.addEventListener("click", () => {
@@ -1593,12 +1969,98 @@ function bindOffice() {
     render();
   });
   document.querySelectorAll("[data-project-field]").forEach(field => field.addEventListener("input", updateProjectField));
+  document.querySelectorAll("[data-edit-customer-details]").forEach(button => button.addEventListener("click", () => {
+    state.editingCustomerDetails = button.dataset.editCustomerDetails;
+    render();
+  }));
+  document.querySelectorAll("[data-cancel-customer-details]").forEach(button => button.addEventListener("click", () => {
+    state.editingCustomerDetails = null;
+    render();
+  }));
+  document.querySelectorAll("[data-customer-detail-field]").forEach(field => {
+    field.addEventListener("input", updateCustomerDetailField);
+    field.addEventListener("change", updateCustomerDetailField);
+  });
+  document.querySelectorAll("[data-property-detail-field]").forEach(field => {
+    field.addEventListener("input", updatePropertyDetailField);
+    field.addEventListener("change", updatePropertyDetailField);
+  });
+  document.querySelectorAll("[data-save-customer-details]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.saveCustomerDetails);
+    if (!project) return;
+    project.customerId = normalizeCell(project.customer.cell);
+    upsertCustomer(project.customer);
+    addProjectHistory(project, "Back Office", "Updated customer personal details.");
+    state.editingCustomerDetails = null;
+    saveAll();
+    showToast("Customer details saved.");
+    render();
+  }));
+  document.querySelectorAll("[data-open-action-tracker]").forEach(button => button.addEventListener("click", () => {
+    state.actionTracker = { reference: button.dataset.openActionTracker, type: "Customer Call", actor: "Back Office", detail: "" };
+    render();
+  }));
+  document.querySelectorAll("[data-track-action-field]").forEach(field => {
+    field.addEventListener("input", updateActionTrackerField);
+    field.addEventListener("change", updateActionTrackerField);
+  });
+  document.querySelectorAll("[data-cancel-action-tracker]").forEach(button => button.addEventListener("click", () => {
+    state.actionTracker = null;
+    render();
+  }));
+  document.querySelectorAll("[data-save-action-tracker]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.saveActionTracker);
+    if (!project || !state.actionTracker) return;
+    const detail = state.actionTracker.detail.trim();
+    if (!detail) {
+      showToast("Add a note before saving the action.");
+      return;
+    }
+    addProjectHistory(project, state.actionTracker.actor || "Back Office", `${state.actionTracker.type}: ${detail}`, "orange");
+    state.actionTracker = null;
+    saveAll();
+    showToast("Action tracked.");
+    render();
+  }));
+  document.querySelectorAll("[data-copy-stage-message]").forEach(button => button.addEventListener("click", () => {
+    const [reference, stage] = button.dataset.copyStageMessage.split(":");
+    const project = state.projects.find(item => item.reference === reference);
+    if (!project) return;
+    copyText(stageCustomerMessage(project, stage), "Customer message copied.");
+  }));
   document.querySelectorAll("[data-set-status]").forEach(button => button.addEventListener("click", () => {
-    applyProjectStatus(selectedProject(), button.dataset.setStatus);
+    applyProjectStatus(selectedProject(), button.dataset.setStatus, "Back Office");
     if (state.officeTab === "pipeline") state.pipelineStage = pipelineStageForProject(selectedProject());
+    if (button.dataset.setStatus === "Quote Accepted") state.customerViewSection = "payment";
     saveAll();
     render();
   }));
+  document.querySelectorAll("[data-mark-payment]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.markPayment);
+    if (!project) return;
+    project.paymentStatus = "Payment made";
+    project.popUploaded = true;
+    project.paymentMadeAt = new Date().toISOString();
+    project.documents = project.documents || {};
+    project.documents.invoiceGeneratedAt = project.documents.invoiceGeneratedAt || new Date().toISOString();
+    addProjectHistory(project, "Back Office", "POP uploaded / payment marked.");
+    state.customerViewSection = "project";
+    saveAll();
+    showToast("Payment received.");
+    render();
+  }));
+  document.querySelectorAll("[data-cancel-customer-rejected]").forEach(button => button.addEventListener("click", () => {
+    const project = state.projects.find(item => item.reference === button.dataset.cancelCustomerRejected);
+    if (!project) return;
+    applyProjectStatus(project, "Cancelled", "Back Office");
+    addProjectHistory(project, "Back Office", "Cancelled quote: Customer rejected.");
+    state.customerViewSection = "quote";
+    if (state.officeTab === "pipeline") state.pipelineStage = pipelineStageForProject(project);
+    saveAll();
+    showToast("Quote cancelled.");
+    render();
+  }));
+  bindDocumentActions();
   document.querySelectorAll("[data-open-assign-team]").forEach(button => button.addEventListener("click", () => {
     state.assigningProjectRef = button.dataset.openAssignTeam;
     render();
@@ -1632,6 +2094,20 @@ function bindOffice() {
     field.addEventListener("input", updateFormLinkField);
     field.addEventListener("change", updateFormLinkField);
   });
+  document.querySelectorAll("[data-access-note-option-index]").forEach(field => {
+    field.addEventListener("input", updateAccessNoteOption);
+    field.addEventListener("change", updateAccessNoteOption);
+  });
+  document.querySelectorAll("[data-add-access-note-option]").forEach(button => button.addEventListener("click", () => {
+    state.settings.quoteForm.accessNotes = activeAccessNoteOptions();
+    state.settings.quoteForm.accessNotes.push(`New Access Option ${state.settings.quoteForm.accessNotes.length + 1}`);
+    render();
+  }));
+  document.querySelectorAll("[data-remove-access-note-option]").forEach(button => button.addEventListener("click", () => {
+    state.settings.quoteForm.accessNotes = activeAccessNoteOptions();
+    state.settings.quoteForm.accessNotes.splice(Number(button.dataset.removeAccessNoteOption), 1);
+    render();
+  }));
   document.querySelectorAll("[data-add-form-link]").forEach(button => button.addEventListener("click", () => {
     state.settings.quoteForm.links.push({ name: "New Source Link", source: `source-${state.settings.quoteForm.links.length + 1}` });
     render();
@@ -1803,10 +2279,10 @@ function bindOffice() {
     showToast("Team saved.");
     render();
   }));
-  document.querySelectorAll("[data-open-project]").forEach(button => button.addEventListener("click", () => go(`/project/${button.dataset.openProject}`)));
+  document.querySelectorAll("[data-open-project]").forEach(button => button.addEventListener("click", () => openNewTab(`/project/${button.dataset.openProject}`)));
   document.getElementById("openEstimate")?.addEventListener("click", () => {
     state.mobileMenuOpen = false;
-    go("/estimate");
+    openNewTab("/estimate");
   });
   document.getElementById("saveProject")?.addEventListener("click", () => {
     saveAll();
@@ -1839,6 +2315,12 @@ function bindEstimate() {
     state.form.selectedServices = [...selected];
     render();
   }));
+  document.querySelectorAll("[data-access-note]").forEach(box => box.addEventListener("change", () => {
+    const selected = selectedAccessNoteSet();
+    box.checked ? selected.add(box.value) : selected.delete(box.value);
+    state.form.property.accessNotes = [...selected].join(", ");
+    render();
+  }));
   document.querySelectorAll("[data-question]").forEach(input => input.addEventListener("change", () => {
     state.form.estimateAnswers[input.dataset.question] = input.value;
     render();
@@ -1850,7 +2332,12 @@ function bindEstimate() {
     document.getElementById(button.dataset.openPhoto)?.click();
   }));
   document.querySelectorAll("[data-photo-area]").forEach(field => field.addEventListener("change", async () => {
-    state.form.areas[Number(field.dataset.photoArea)].photos = await readPhotos([...field.files].slice(0, 3));
+    const area = state.form.areas[Number(field.dataset.photoArea)];
+    const remaining = Math.max(0, 5 - area.photos.length);
+    const photos = await readPhotos([...field.files].slice(0, remaining));
+    area.photos = [...area.photos, ...photos].slice(0, 5);
+    if ([...field.files].length > remaining) showToast("Maximum 5 photos per area.");
+    field.value = "";
     render();
   }));
   document.getElementById("useLocation")?.addEventListener("click", useCurrentLocation);
@@ -1863,6 +2350,13 @@ function bindEstimate() {
     render();
   });
   document.getElementById("generateQuote")?.addEventListener("click", () => {
+    const missingPhotoArea = state.form.areas.find(area => !area.photos.length);
+    if (missingPhotoArea) {
+      showToast("Please upload at least 1 photo for each area.");
+      state.step = "areas";
+      render();
+      return;
+    }
     const project = createProjectFromForm();
     state.projects = [project, ...state.projects];
     state.selectedRef = project.reference;
@@ -1871,20 +2365,23 @@ function bindEstimate() {
     render();
   });
   document.getElementById("acceptEstimate")?.addEventListener("click", () => {
-    applyProjectStatus(selectedProject(), "Quote Accepted");
+    applyProjectStatus(selectedProject(), "Quote Accepted", "Customer");
+    state.customerViewSection = "payment";
     saveAll();
     state.step = "accepted";
     render();
   });
-  document.querySelectorAll("[data-open-project]").forEach(button => button.addEventListener("click", () => go(`/project/${button.dataset.openProject}`)));
+  document.querySelectorAll("[data-open-project]").forEach(button => button.addEventListener("click", () => openNewTab(`/project/${button.dataset.openProject}`)));
   document.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => showToast(button.dataset.action)));
 }
 
 function bindPublicProject(project) {
   bindCopyActions();
+  bindDocumentActions();
   document.querySelectorAll("[data-public-action]").forEach(button => button.addEventListener("click", () => {
     if (button.dataset.publicAction === "Quote accepted") {
-      applyProjectStatus(project, "Quote Accepted");
+      applyProjectStatus(project, "Quote Accepted", "Customer");
+      state.customerViewSection = "payment";
       saveAll();
       render();
       return;
@@ -1913,11 +2410,13 @@ function bindTeamPortal(teamIndex) {
       project.teamAccepted = true;
       project.teamDecision = "Accepted";
       if (project.status === "Scheduled") project.status = "Team Assigned";
+      addProjectHistory(project, project.team || "Team", "Accepted allocated project.");
       showToast("Project accepted.");
     }
     if (button.dataset.teamProjectAction === "move") {
       project.teamDecision = "Move Requested";
       project.teamDecisionNote = "Team requested a new time.";
+      addProjectHistory(project, project.team || "Team", "Requested a new time.");
       showToast("Move request sent to admin.");
     }
     if (button.dataset.teamProjectAction === "reject") {
@@ -1928,10 +2427,25 @@ function bindTeamPortal(teamIndex) {
       }
       project.teamDecision = "Rejected";
       project.teamDecisionNote = reason;
+      addProjectHistory(project, project.team || "Team", `Rejected project: ${reason}`);
       showToast("Project rejected and sent to admin.");
     }
     saveAll();
     state.teamPortalProjectRef = null;
+    render();
+  }));
+}
+
+function bindDocumentActions() {
+  document.querySelectorAll("[data-open-document]").forEach(button => button.addEventListener("click", () => {
+    const [reference, type] = button.dataset.openDocument.split(":");
+    const project = state.projects.find(item => item.reference === reference);
+    if (!project) return;
+    project.documents = project.documents || {};
+    if (type === "quote") project.documents.quoteGeneratedAt = project.documents.quoteGeneratedAt || new Date().toISOString();
+    if (type === "invoice") project.documents.invoiceGeneratedAt = project.documents.invoiceGeneratedAt || new Date().toISOString();
+    saveAll();
+    openPrintableDocument(project, type);
     render();
   }));
 }
@@ -2004,6 +2518,21 @@ function updateProjectField(event) {
   else project[field] = event.target.value;
 }
 
+function updateCustomerDetailField(event) {
+  const project = selectedProject();
+  project.customer[event.target.dataset.customerDetailField] = event.target.value;
+}
+
+function updatePropertyDetailField(event) {
+  const project = selectedProject();
+  project.property[event.target.dataset.propertyDetailField] = event.target.value;
+}
+
+function updateActionTrackerField(event) {
+  if (!state.actionTracker) return;
+  state.actionTracker[event.target.dataset.trackActionField] = event.target.value;
+}
+
 function updateFormField(event) {
   state.form[event.target.dataset.group][event.target.dataset.field] = event.target.value;
   if (event.target.dataset.group === "property" && event.target.dataset.field === "city") {
@@ -2044,6 +2573,11 @@ function updatePricingFlatField(event) {
 function updateFormLinkField(event) {
   const link = state.settings.quoteForm.links[Number(event.target.dataset.formLinkIndex)];
   link[event.target.dataset.formLinkField] = event.target.value;
+}
+
+function updateAccessNoteOption(event) {
+  state.settings.quoteForm.accessNotes = activeAccessNoteOptions();
+  state.settings.quoteForm.accessNotes[Number(event.target.dataset.accessNoteOptionIndex)] = event.target.value;
 }
 
 function updateConfiguredService(event) {
@@ -2114,8 +2648,12 @@ function updateCalendarBlockForm(event) {
 }
 
 function copyTeamLink(path) {
-  const url = toAbsoluteUrl(path);
-  copyText(url, "Team owner link copied.");
+  openNewTab(path);
+}
+
+function openNewTab(path) {
+  const opened = window.open(toAbsoluteUrl(path), "_blank", "noopener,noreferrer");
+  if (!opened) showToast("Allow pop-ups to open this link in a new tab.");
 }
 
 function copyPhoneNumber(number) {
@@ -2137,6 +2675,96 @@ function copyText(value, message) {
     return;
   }
   showToast(value);
+}
+
+function stageCustomerMessage(project, stage) {
+  const name = project.customer.firstName || "there";
+  const link = toAbsoluteUrl(`/project/${project.reference}`);
+  const messages = {
+    verification: `Hi ${name},\n\nWe are currently verifying your City Garden Guys request and checking the photos/details you submitted.\n\nYou can track your project here:\n${link}`,
+    quoteVerified: `Hi ${name},\n\nYour quote has just been verified, and you can now accept the quote and move forward.\n\nYou can do that here:\n${link}`,
+    quoteAccepted: `Hi ${name},\n\nThank you, your quote has been accepted. The next step is payment confirmation.\n\nYou can view your project and payment status here:\n${link}`,
+    payment: `Hi ${name},\n\nYour quote is accepted and we are now waiting for payment / proof of payment.\n\nYou can view the project details here:\n${link}`,
+    paymentReceived: `Hi ${name},\n\nThank you, payment has been received. We will now move your project toward scheduling.\n\nYou can track the next steps here:\n${link}`,
+    project: `Hi ${name},\n\nYour City Garden Guys project is active in our system. We will keep the status updated as it moves through scheduling and team allocation.\n\nTrack it here:\n${link}`,
+    allocation: `Hi ${name},\n\nWe are allocating your project to a City Garden Guys team and timeslot.\n\nYou can track your project here:\n${link}`,
+    scheduled: `Hi ${name},\n\nYour project has been scheduled with our team.\n\nYou can track the status here:\n${link}`,
+    review: `Hi ${name},\n\nThe team has completed the work and your project is now in review.\n\nYou can view the project here:\n${link}`,
+    completed: `Hi ${name},\n\nYour City Garden Guys project has been completed. Thank you for trusting us with the work.\n\nYou can view the final project here:\n${link}`,
+    cancelled: `Hi ${name},\n\nYour City Garden Guys quote/project has been cancelled as requested or confirmed.\n\nYou can view the project record here:\n${link}`,
+  };
+  return `${messages[stage] || messages.project}\n\n--\nCity Garden Guys`;
+}
+
+function openPrintableDocument(project, type) {
+  const title = type === "invoice" ? "Paid Invoice" : "Quote";
+  const paid = type === "invoice";
+  const docNumber = `${project.reference}-${type === "invoice" ? "INV" : "QT"}`;
+  const opened = window.open("", "_blank", "noopener,noreferrer");
+  if (!opened) {
+    showToast("Allow pop-ups to open the document.");
+    return;
+  }
+  opened.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(title)} ${escapeHtml(project.reference)}</title>
+        <style>
+          body { margin: 0; padding: 32px; color: #17221b; font-family: Arial, sans-serif; }
+          header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #ff6a00; padding-bottom: 18px; margin-bottom: 24px; }
+          img { max-width: 220px; }
+          h1 { margin: 0; color: #004b23; font-size: 30px; }
+          h2 { color: #004b23; font-size: 16px; margin: 24px 0 8px; }
+          .meta { text-align: right; font-size: 13px; line-height: 1.5; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+          .box { border: 1px solid #dde6dc; border-radius: 8px; padding: 14px; }
+          .row { display: flex; justify-content: space-between; gap: 18px; border-bottom: 1px solid #eef1f0; padding: 8px 0; font-size: 13px; }
+          .row:last-child { border-bottom: 0; }
+          .total { margin-top: 24px; padding: 16px; border-radius: 8px; background: #f4efe8; display: flex; justify-content: space-between; font-size: 22px; font-weight: 700; }
+          .paid { color: #004b23; font-weight: 700; }
+          footer { margin-top: 32px; color: #607168; font-size: 12px; }
+          @media print { button { display: none; } body { padding: 20mm; } }
+        </style>
+      </head>
+      <body>
+        <button onclick="window.print()">Print / Save PDF</button>
+        <header>
+          <img src="${window.location.origin}/assets/CGG_Quote_Logo.png" alt="City Garden Guys" />
+          <div class="meta">
+            <h1>${escapeHtml(title)}</h1>
+            <div>${escapeHtml(docNumber)}</div>
+            <div>${new Date().toLocaleDateString("en-ZA")}</div>
+            ${paid ? `<div class="paid">PAID</div>` : ""}
+          </div>
+        </header>
+        <section class="grid">
+          <div class="box">
+            <h2>Customer</h2>
+            <div class="row"><span>Name</span><strong>${escapeHtml(project.customer.firstName)} ${escapeHtml(project.customer.lastName)}</strong></div>
+            <div class="row"><span>Cell</span><strong>${escapeHtml(project.customer.cell || "Not supplied")}</strong></div>
+            <div class="row"><span>Email</span><strong>${escapeHtml(project.customer.email || "Not supplied")}</strong></div>
+          </div>
+          <div class="box">
+            <h2>Project</h2>
+            <div class="row"><span>Reference</span><strong>${escapeHtml(project.reference)}</strong></div>
+            <div class="row"><span>Address</span><strong>${escapeHtml(fullAddress(project))}</strong></div>
+            <div class="row"><span>Status</span><strong>${escapeHtml(project.status)}</strong></div>
+          </div>
+        </section>
+        <section class="box">
+          <h2>Scope</h2>
+          <div class="row"><span>Services</span><strong>${escapeHtml(project.selectedServices.join(", ") || "Not Sure")}</strong></div>
+          <div class="row"><span>Areas</span><strong>${escapeHtml(project.areas.map(area => area.name).join(", ") || "Not supplied")}</strong></div>
+          <div class="row"><span>Rating</span><strong>${escapeHtml(`${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`)}</strong></div>
+        </section>
+        <div class="total"><span>${paid ? "Amount Paid" : "Quote Amount"}</span><strong>${money(project.price)}</strong></div>
+        <footer>City Garden Guys · Trees. Branches. Green Waste.</footer>
+      </body>
+    </html>
+  `);
+  opened.document.close();
+  opened.focus();
 }
 
 function openTeamProject(reference) {
@@ -2162,6 +2790,7 @@ function slugifyTeam(name) {
 function createProjectFromForm() {
   const rating = calculateRating(state.form);
   const customerId = normalizeCell(state.form.customer.cell);
+  const createdAt = new Date().toISOString();
   upsertCustomer(state.form.customer);
   return {
     reference: nextReference(),
@@ -2176,13 +2805,14 @@ function createProjectFromForm() {
     areas: state.form.areas.map(area => ({
       name: area.name || "Project Area",
       notes: area.notes || "No notes supplied.",
-      photos: area.photos.length ? area.photos : [placeholderPhoto(area.name || "Project Area")],
+      photos: area.photos,
     })),
     team: "Unassigned",
     scheduledDate: "",
     scheduledTime: "09:00",
     source: estimateSource(),
-    createdAt: new Date().toISOString(),
+    createdAt,
+    history: [{ at: createdAt, action: "Customer", detail: "Submitted request. Estimate generated." }],
   };
 }
 
@@ -2222,6 +2852,7 @@ function wasteRatingForAnswer(answer) {
 
 function seedProject(reference, firstName, lastName, suburb, status, price, time, load, complexity) {
   const cell = "082 220 1400";
+  const createdAt = new Date().toISOString();
   return {
     reference,
     customerId: normalizeCell(cell),
@@ -2248,7 +2879,8 @@ function seedProject(reference, firstName, lastName, suburb, status, price, time
     team: defaultTeamOptions()[Math.floor(Math.random() * defaultTeamOptions().length)] || "Unassigned",
     scheduledDate: "2026-06-26",
     scheduledTime: "09:00",
-    createdAt: new Date().toISOString(),
+    createdAt,
+    history: [{ at: createdAt, action: "Back Office", detail: `Created demo project. Status: ${status}` }],
   };
 }
 
@@ -2356,6 +2988,18 @@ function reportIcon() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 3v6h6M8 17v-4M12 17v-7M16 17v-2"/></svg>`;
 }
 
+function pencilIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+}
+
+function chatIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8M8 13h5"/></svg>`;
+}
+
+function documentIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6Z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>`;
+}
+
 function teamMembersLine(label, team, fallback) {
   const members = team.membersList || [];
   if (!members.length) return teamLine(label, fallback || "Not set");
@@ -2411,15 +3055,29 @@ function selectedProject() {
   return state.projects.find(project => project.reference === state.selectedRef) || state.projects[0];
 }
 
-function applyProjectStatus(project, status) {
+function addProjectHistory(project, action, detail = "", tone = "") {
+  project.history = project.history || [];
+  project.history.push({ at: new Date().toISOString(), action, detail, tone });
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function applyProjectStatus(project, status, actor = "Back Office") {
+  const previous = project.status;
   project.status = status;
+  if (previous !== status) addProjectHistory(project, actor, `Changed status: ${previous} -> ${status}`);
   if (status === "Quote Verified") {
     project.quoteVerifiedAt = new Date().toISOString();
     project.customerQuoteReady = true;
+    addProjectHistory(project, actor, `Verified quote: ${money(project.price)} · ${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`, "orange");
   }
   if (status === "Quote Accepted") {
     project.quoteAcceptedAt = project.quoteAcceptedAt || new Date().toISOString();
     project.projectCreated = true;
+    addProjectHistory(project, actor, "Accepted quote.", "orange");
   }
   if (status === "Project Review") project.reviewStartedAt = new Date().toISOString();
   if (status === "Completed") project.completedAt = project.completedAt || new Date().toISOString();
@@ -2449,6 +3107,7 @@ function assignProjectToTeam(reference, teamIndex, date, time) {
   const project = state.projects.find(item => item.reference === reference);
   const team = state.serviceTeams[teamIndex];
   if (!project || !team) return;
+  const previous = project.status;
   project.team = team.name;
   project.scheduledDate = date;
   project.scheduledTime = time;
@@ -2457,6 +3116,8 @@ function assignProjectToTeam(reference, teamIndex, date, time) {
   project.teamDecision = "Pending";
   project.teamDecisionNote = "";
   project.teamAssignedAt = new Date().toISOString();
+  addProjectHistory(project, "Back Office", `Allocated to ${team.name} · ${date} ${time}`, "orange");
+  if (previous !== project.status) addProjectHistory(project, "Back Office", `Changed status: ${previous} -> ${project.status}`);
 }
 
 function filteredProjects() {
@@ -2667,6 +3328,7 @@ function teamShareUrl(team) {
 }
 
 function toAbsoluteUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
   return `${window.location.origin}${path}`;
 }
 
@@ -2676,6 +3338,15 @@ function estimateSource() {
 
 function activeServices() {
   return (state.settings.services?.length ? state.settings.services : services).map(service => String(service || "").trim()).filter(Boolean);
+}
+
+function activeAccessNoteOptions() {
+  const options = state.settings.quoteForm?.accessNotes || defaultSettings.quoteForm.accessNotes;
+  return options.map(note => String(note || "").trim()).filter(Boolean);
+}
+
+function selectedAccessNoteSet() {
+  return new Set(String(state.form.property.accessNotes || "").split(",").map(note => note.trim()).filter(Boolean));
 }
 
 function activeTeamServices() {
@@ -2750,6 +3421,7 @@ function mergeSettings(saved) {
     quoteForm: {
       ...defaultSettings.quoteForm,
       ...(saved.quoteForm || {}),
+      accessNotes: (saved.quoteForm || {}).accessNotes || defaultSettings.quoteForm.accessNotes,
       links: (saved.quoteForm || {}).links || defaultSettings.quoteForm.links,
     },
   };
