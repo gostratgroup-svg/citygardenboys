@@ -1,6 +1,26 @@
 {
   "rewrites": [
     {
+      "source": "/marketing",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/app",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/estimate",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/project/:path*",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/team/:path*",
+      "destination": "/app.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /project/
+Disallow: /team/
+Disallow: /estimate
+
+Sitemap: https://www.citygardenguys.co.za/sitemap.xml

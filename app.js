@@ -139,7 +139,6 @@ const defaultSettings = {
   },
   pricing: {
     time: { T1: 450, T2: 650, T3: 1150, T4: 2200 },
-    load: { L1: 0, L2: 150, L3: 450, L4: 850 },
     waste: { W0: 0, W1: 120, W2: 220, W3: 350, W4: 550, W5: 220 },
     complexity: { A: 0, B: 150, C: 350, D: 650 },
     urgentAsap: 250,
@@ -322,7 +321,7 @@ function renderBackOffice() {
           ${metric("Revenue", money(state.projects.reduce((sum, item) => sum + Number(item.price || 0), 0)))}
         </section>`}
         <section class="ops-workspace ${financeOnly ? "finance-workspace" : ""} ${pipelineOnly ? "pipeline-workspace" : ""}">
-          <div class="ops-panel project-queue ${financeOnly ? "finance-queue" : ""} ${pipelineOnly ? "pipeline-queue" : ""}">
+          <div class="ops-panel project-queue ${financeOnly ? "finance-queue" : ""} ${pipelineOnly ? "pipeline-queue" : ""} ${overviewOnly ? "overview-queue" : ""}">
             <div class="panel-head">
               <div><h2>${pipelineOnly ? "Pipeline Stages" : financeOnly ? "Finance Queue" : "Project Queue"}</h2><span>${visibleQueueProjects().length} visible projects</span></div>
             </div>
@@ -709,7 +708,7 @@ function renderOverviewControl(project) {
         <div class="panel-head"><div><h2>Rating</h2><span>Internal estimate logic</span></div></div>
         <div class="rating-controls">
           ${selectControl("Time", "time", ["T1", "T2", "T3", "T4"], project.rating.time)}
-          ${selectControl("Load", "load", ["L1", "L2", "L3", "L4"], project.rating.load)}
+        ${selectControl("Waste Removal", "waste", wasteRemovalOptions(), project.estimateAnswers?.waste || "Unsure")}
           ${selectControl("Complexity", "complexity", ["A", "B", "C", "D"], project.rating.complexity)}
         </div>
       </div>
@@ -771,7 +770,7 @@ function renderVerificationStage(project) {
       <div class="control-grid">
         ${inputControl("Estimated Price", "price", project.price, "number")}
         ${selectControl("Time Rating", "time", ["T1", "T2", "T3", "T4"], project.rating.time)}
-        ${selectControl("Load Rating", "load", ["L1", "L2", "L3", "L4"], project.rating.load)}
+        ${selectControl("Waste Removal", "waste", wasteRemovalOptions(), project.estimateAnswers?.waste || "Unsure")}
         ${selectControl("X Rating", "complexity", ["A", "B", "C", "D"], project.rating.complexity)}
       </div>
       <div class="project-detail-compact verification-detail-grid">
@@ -796,7 +795,7 @@ function renderVerificationStage(project) {
           <strong>${escapeHtml(project.areas.map(area => `${area.name}: ${area.notes}`).join(" | ") || "None supplied")}</strong>
         </div>
       </div>
-      <textarea class="ops-notes" data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "")}</textarea>
+      <textarea class="ops-notes verification-notes" data-autogrow data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "")}</textarea>
       <div class="button-row">
         <button class="ops-btn light" data-set-status="More Photos Requested">More Photos</button>
         <button class="ops-btn light" data-set-status="Site Visit Requested">Site Visit Requested</button>
@@ -886,7 +885,7 @@ function renderQuoteControl(project) {
       <div class="control-grid">
         ${inputControl("Estimated Price", "price", project.price, "number")}
         ${selectControl("Time Rating", "time", ["T1", "T2", "T3", "T4"], project.rating.time)}
-        ${selectControl("Load Rating", "load", ["L1", "L2", "L3", "L4"], project.rating.load)}
+        ${selectControl("Waste Removal", "waste", wasteRemovalOptions(), project.estimateAnswers?.waste || "Unsure")}
         ${selectControl("X Rating", "complexity", ["A", "B", "C", "D"], project.rating.complexity)}
       </div>
       <div class="data-grid verification-grid">
@@ -895,7 +894,7 @@ function renderQuoteControl(project) {
         ${dataItem("Uploaded Areas", project.areas.length)}
         ${dataItem("Photos", project.areas.reduce((sum, area) => sum + area.photos.length, 0))}
       </div>
-      <textarea class="ops-notes" data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "Estimate includes labour, loading, clean-up and green waste removal.")}</textarea>
+      <textarea class="ops-notes verification-notes" data-autogrow data-project-field="quoteNotes" placeholder="Verification notes">${escapeHtml(project.quoteNotes || "Estimate includes labour, loading, clean-up and green waste removal.")}</textarea>
       <div class="button-row">
         <button class="ops-btn light" data-set-status="More Photos Requested">More Photos</button>
         <button class="ops-btn light" data-set-status="Site Visit Requested">Site Visit Requested</button>
@@ -962,30 +961,19 @@ function renderSettingsControl() {
   if (editing === "services") return renderServicesSummary(true);
   if (editing === "locations") return renderLocationSettings(true);
   return `
-    <section class="split-grid">
-      ${settingsSummaryCard("Finance Details", "Banking details shown on customer project/payment screens", [
-        ["Account Name", settings.banking.accountName],
-        ["Bank", settings.banking.bankName],
-        ["Account No.", settings.banking.accountNumber],
-        ["Branch Code", settings.banking.branchCode],
-        ["Payment Note", settings.banking.paymentNote],
-      ], "finance", true)}
-      ${settingsSummaryCard("Pricing Add-Ons", "Applied on top of T / L / X job pricing", [
-        ["ASAP Urgency", money(settings.pricing.urgentAsap)],
-        ["Extra Area", money(settings.pricing.extraArea)],
-        ["Formula", "Time + Load + Waste + Complexity + Urgency + Extra Areas"],
-      ], "addons")}
+    <section class="ops-panel settings-title-list">
+      ${settingsTitleButton("Finance Details", "finance")}
+      ${settingsTitleButton("Pricing Add-Ons", "addons")}
+      ${settingsTitleButton("Quote Form", "quoteForm")}
+      ${settingsTitleButton("Job Pricing", "pricing")}
+      ${settingsTitleButton("Service Configuration", "services")}
+      ${settingsTitleButton("City And Neighbourhoods", "locations")}
     </section>
-    ${settingsSummaryCard("Quote Form", "Manage the internal quote creator and source-tracked form links", [
-      ["Form Title", settings.quoteForm.title],
-      ["Primary Button", settings.quoteForm.buttonText],
-      ["Access Note Options", activeAccessNoteOptions().length],
-      ["Form Links", settings.quoteForm.links.length],
-    ], "quoteForm")}
-    ${pricingSummaryCard(settings)}
-    ${renderServicesSummary(false)}
-    ${renderLocationSettings(false)}
   `;
+}
+
+function settingsTitleButton(title, editKey) {
+  return `<button class="settings-title-row" data-edit-settings="${editKey}"><span>${title}</span><strong>Open</strong></button>`;
 }
 
 function settingsSummaryCard(title, subtitle, rows, editKey, dense = false) {
@@ -1006,12 +994,11 @@ function pricingSummaryCard(settings) {
   return `
     <section class="ops-panel settings-card">
       <div class="panel-head">
-        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, L1-L4, W0-W5 and X/A-D values used in instant quotes</span></div>
+        <div><h2>Job Pricing Configuration</h2><span>Saved T1-T4, W0-W5 and X/A-D values used in instant quotes</span></div>
         <button class="ops-btn light" data-edit-settings="pricing">Edit</button>
       </div>
-      <div class="settings-matrix readonly">
+      <div class="settings-matrix readonly pricing-matrix">
         ${pricingReadOnlyGroup("Time Rating", settings.pricing.time)}
-        ${pricingReadOnlyGroup("Load Rating", settings.pricing.load)}
         ${pricingReadOnlyGroup("Waste Removal", settings.pricing.waste)}
         ${pricingReadOnlyGroup("X Rating", settings.pricing.complexity)}
       </div>
@@ -1117,9 +1104,8 @@ function renderPricingEditor(settings) {
   return `
     <section class="ops-panel settings-editor">
       <div class="panel-head"><div><h2>Edit Job Pricing Configuration</h2><span>Save to return to the details box</span></div>${settingsEditorActions()}</div>
-      <div class="settings-matrix four">
+      <div class="settings-matrix pricing-matrix">
         ${pricingGroup("Time Rating", "time", settings.pricing.time, { T1: "1-2 hours", T2: "2-4 hours", T3: "5-8 hours", T4: "2 days" })}
-        ${pricingGroup("Load Rating", "load", settings.pricing.load, { L1: "1 dustbin", L2: "2 dustbins", L3: "Half bakkie / half ton bag", L4: "Full bakkie / 1 ton bag" })}
         ${pricingGroup("Waste Removal", "waste", settings.pricing.waste, { W0: "No removal", W1: "1-2 dustbins", W2: "Half bakkie load", W3: "Full bakkie load", W4: "More than full bakkie", W5: "Unsure" })}
         ${pricingGroup("X Rating", "complexity", settings.pricing.complexity, { A: "Easy", B: "Moderate", C: "Tedious", D: "Complex" })}
       </div>
@@ -1792,7 +1778,7 @@ function renderQuickQuestions() {
   return `
     ${stepHeader("Quick Estimate", "These answers create the internal rating and price.")}
     ${question("How overgrown is the area?", "overgrown", ["Light", "Moderate", "Heavy"], a.overgrown)}
-    ${question("Green waste removal", "waste", ["No removal - we will keep it tidy for you to remove", "1-2 dustbins", "Half bakkie load", "Full bakkie load", "More", "Unsure"], a.waste)}
+    ${question("Waste removal required?", "waste", wasteRemovalOptions(), a.waste)}
     ${question("How easy is access?", "access", ["Easy", "Moderate", "Difficult"], a.access)}
     ${question("How urgent is the project?", "urgency", ["ASAP", "This week", "Next week", "Flexible"], a.urgency)}
     ${stepActions("areas", "customer")}
@@ -1878,6 +1864,7 @@ function renderPublicProject(project) {
         ])}</div>
         <div class="ops-panel"><h2>Documents</h2>${renderCustomerDocuments(project)}</div>
         <div class="ops-panel"><h2>Updates</h2><div class="updates-list"><div><strong>Project created</strong><p>Your estimate and project record have been generated.</p></div><div><strong>Next update</strong><p>We verify your photos and confirm scheduling.</p></div></div></div>
+        <div class="ops-panel"><h2>History</h2>${renderPublicHistory(project)}</div>
       </section>
       <div class="toast" id="toast"></div>
     </main>
@@ -1910,6 +1897,17 @@ function renderCustomerDocuments(project) {
       ${invoiceAvailable ? `<button class="document-btn" data-open-document="${project.reference}:invoice">${documentIcon()}<span>Invoice</span></button>` : ""}
     </div>
   `;
+}
+
+function renderPublicHistory(project) {
+  const history = project.history?.length ? project.history : [{ at: project.createdAt || new Date().toISOString(), action: "Project created", detail: project.status }];
+  return `<div class="history-list public-history">${history.slice().reverse().map(item => `
+    <div class="${item.tone === "orange" ? "highlight" : ""}">
+      <strong>${escapeHtml(historyActionLabel(project, item.action))}</strong>
+      <span>${escapeHtml(item.detail || "")}</span>
+      <small>${formatDateTime(item.at)}</small>
+    </div>
+  `).join("")}</div>`;
 }
 
 function projectTimerBadge(project, size = "") {
@@ -2076,6 +2074,7 @@ function bindOffice() {
     }
   });
   document.querySelectorAll("[data-project-field]").forEach(field => field.addEventListener("input", updateProjectField));
+  document.querySelectorAll("[data-autogrow]").forEach(autoGrowTextarea);
   document.querySelectorAll("[data-edit-customer-details]").forEach(button => button.addEventListener("click", () => {
     state.editingCustomerDetails = button.dataset.editCustomerDetails;
     render();
@@ -2747,8 +2746,19 @@ function updateProjectField(event) {
   const project = selectedProject();
   const field = event.target.dataset.projectField;
   if (["time", "load", "complexity"].includes(field)) project.rating[field] = event.target.value;
+  else if (field === "waste") {
+    project.estimateAnswers = project.estimateAnswers || {};
+    project.estimateAnswers.waste = event.target.value;
+    project.rating.load = loadRatingForWasteAnswer(event.target.value);
+  }
   else if (field === "price") project.price = Number(event.target.value || 0);
   else project[field] = event.target.value;
+  if (event.target.dataset.autogrow !== undefined) autoGrowTextarea(event.target);
+}
+
+function autoGrowTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function updateCustomerDetailField(event) {
@@ -3057,20 +3067,30 @@ function calculateRating(form) {
   if (areaCount >= 2 || overgrown === "Moderate") time = "T2";
   if (areaCount >= 3 || overgrown === "Heavy" || heavy) time = "T3";
   if (areaCount >= 4 && overgrown === "Heavy") time = "T4";
-  let load = waste === "1-2 dustbins" ? "L2" : waste === "Full bakkie load" || waste === "More" ? "L4" : waste === "Half bakkie load" || waste === "Unsure" || waste === "Not sure" ? "L3" : "L1";
+  let load = loadRatingForWasteAnswer(waste);
   let complexity = access === "Difficult" && heavy ? "D" : access === "Difficult" || overgrown === "Heavy" ? "C" : access === "Moderate" || overgrown === "Moderate" ? "B" : "A";
   return { time, load, complexity };
+}
+
+function wasteRemovalOptions() {
+  return ["No removal - we will keep it tidy for you to remove", "1-2 dustbins", "Half bakkie load", "Full bakkie load", "More", "Unsure"];
+}
+
+function loadRatingForWasteAnswer(answer) {
+  if (answer === "1-2 dustbins") return "L2";
+  if (answer === "Full bakkie load" || answer === "More") return "L4";
+  if (answer === "Half bakkie load" || answer === "Unsure" || answer === "Not sure") return "L3";
+  return "L1";
 }
 
 function calculatePrice(rating, form) {
   const pricing = state.settings.pricing;
   const time = pricing.time[rating.time] || 0;
-  const load = pricing.load[rating.load] || 0;
   const waste = pricing.waste[wasteRatingForAnswer(form.estimateAnswers.waste)] || 0;
   const complexity = pricing.complexity[rating.complexity] || 0;
   const urgent = form.estimateAnswers.urgency === "ASAP" ? pricing.urgentAsap : 0;
   const areas = Math.max(0, form.areas.length - 1) * pricing.extraArea;
-  return time + load + waste + complexity + urgent + areas;
+  return time + waste + complexity + urgent + areas;
 }
 
 function wasteRatingForAnswer(answer) {
@@ -3325,7 +3345,8 @@ function applyProjectStatus(project, status, actor = "Back Office") {
   if (status === "Quote Verified") {
     project.quoteVerifiedAt = new Date().toISOString();
     project.customerQuoteReady = true;
-    addProjectHistory(project, actor, `Verified quote: ${money(project.price)} · ${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}`, "orange");
+    const notes = String(project.quoteNotes || "").trim();
+    addProjectHistory(project, actor, `Verified quote: ${money(project.price)} · ${project.rating.time} / ${project.rating.load} / ${project.rating.complexity}${notes ? ` · Notes: ${notes}` : ""}`, "orange");
   }
   if (status === "Quote Accepted") {
     project.quoteAcceptedAt = project.quoteAcceptedAt || new Date().toISOString();
@@ -3414,6 +3435,7 @@ function pipelineProjects() {
 function visibleQueueProjects() {
   if (state.officeTab === "pipeline") return pipelineProjects();
   if (state.officeTab === "quote") return financeProjects();
+  if (state.officeTab === "overview") return filteredProjects().filter(project => !["Completed", "Cancelled"].includes(project.status));
   return filteredProjects();
 }
 
@@ -3724,7 +3746,6 @@ function mergeSettings(saved) {
       ...defaultSettings.pricing,
       ...(saved.pricing || {}),
       time: { ...defaultSettings.pricing.time, ...((saved.pricing || {}).time || {}) },
-      load: { ...defaultSettings.pricing.load, ...((saved.pricing || {}).load || {}) },
       waste: normalizeWastePricing((saved.pricing || {}).waste || {}),
       complexity: { ...defaultSettings.pricing.complexity, ...((saved.pricing || {}).complexity || {}) },
     },
